@@ -1,6 +1,6 @@
 classdef task3 < matlab.apps.AppBase
     
-    % Properties that correspond to app components
+    % Properties that correspond to app component
     properties (Access = public)
         UIFigure                        matlab.ui.Figure
         GridLayout                      matlab.ui.container.GridLayout
