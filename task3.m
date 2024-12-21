@@ -41,6 +41,7 @@ classdef task3 < matlab.apps.AppBase
         ArduinoWorker;
         AlarmWorker;
         DataQueue;                  % queu for parallel communication
+        MeasurementLoop;
         IsMeasuring = false;        %measurement status flag            
         MeasurementBuffer = [];     %creates the rolling buffer
         BufferSize = 0;
@@ -61,11 +62,6 @@ classdef task3 < matlab.apps.AppBase
                     return;
                 end
         
-                if isempty(gcp('nocreate')) % Create parallel pool if not existing
-                    disp('Initializing parallel pool...');
-                    parpool('local');
-                end
-        
                 app.DataQueue = parallel.pool.DataQueue;
                 afterEach(app.DataQueue, @(data)updatePlotCallback(app, data));
         
@@ -78,17 +74,10 @@ classdef task3 < matlab.apps.AppBase
                 app.IsMeasuring = true;
                 app.CurrentFrequency = frequency;
                 disp(['Starting measurement loop with frequency: ', num2str(frequency)]);
+
         
-                % Check if the pool is active
-                if isempty(gcp('nocreate'))
-                    disp('Error: Parallel pool could not be created.');
-                    return;
-                end
-        
-                % Start parallel task)
-        
-                app.MeasurementWorker = parfeval(gcp, @measurementLoop, 0, app.DataQueue, frequency);
-                app.ArduinoWorker = parfeval(gcp, @arduinoWorker, 0, app.DataQueue);
+                app.MeasurementLoop = parfeval(@app.measurementLoop, 0, app.DataQueue, frequency);
+                %app.ArduinoWorker = parfeval(gcp, @arduinoWorker, 0, app.DataQueue);
                 disp('Measurement task started.');
             catch exception
                 app.IsMeasuring = false;
@@ -101,10 +90,9 @@ classdef task3 < matlab.apps.AppBase
 
             app.IsMeasuring = false;        %sets the ismeasuring flag to false
 
-            if ~isempty(app.MeasurementWorker)    %cancel the parallel task if running
-                cancel(app.MeasurementWorker);
-                cancel(app.ArduinoWorker);
-                app.MeasurementWorker = [];
+            if ~isempty(app.MeasurementLoop)    %cancel the parallel task if running
+                cancel(app.MeasurementLoop);
+                app.MeasurementLoop = [];
                 disp('Measurement task stopped.');
             end
         end
@@ -233,118 +221,118 @@ classdef task3 < matlab.apps.AppBase
 
 
 
-
-        function measurementWorker(~, dataQueue, frequency) %measurement worker
-            disp('Measurement worker started.')
-            period = 1/frequency;
-
-            try 
-                while true 
-                    elapsedTime = toc(timerStart);
-
-                    if elapsedTime >= period
-                        timerStart = tic;
-                        send(dataQueue, struct('action', 'measure'));
-
-                        response = poll(dataQueue, 1);
-                        if isfield(response, 'type') && strcmp(response.type, 'measurement')
-                            currentDistance = response.distance;
-
-                            if currentDistance >= 0.02 && currentDistance <= 2
-                                send(dataQueue, [elapsedTime, currentDistance]);
-                            else
-                                send(dataQueue, [elapsedTime, NaN]);
-                            end
-                        end
-                    else 
-                        pause(0.001);
-                    end
-                end
-            catch exception
-                disp(['Error in measurement worker: ', exception.message])
-            end
-        end
-
-
-        function alarmWorker(app, dataQueue)    %alarm worker
-             while app.IsAlarm      %while alarm is true
-                disp('Alarm worker has started.')
-                send(dataQueue, struct('action', 'readVoltage'));
-                response = poll(dataQueue, 1); %wait for voltage
-        
-                if isfield(response, 'type') && strcmp(response.type, 'voltage')
-                    potentiometerVoltage = response.value;  %if voltage recieved turn it into voltage fraction
-                    voltageFraction = potentiometerVoltage / 5;
-        
-                    alarmThreshold = app.AlarmThresholdEditField.Value;
-                    if app.RollingAverage <= alarmThreshold
-                        alarmMaxRatio = alarmThreshold / 0.02;
-                        alarmRatio = alarmThreshold / app.RollingAverage;
-                        alarmFactor = alarmRatio / alarmMaxRatio;
-        
-                        maxFreq = 25 * voltageFraction;
-                        currentFreq = maxFreq * alarmFactor;
-                        currentPeriod = 1 / currentFreq;
-        
-                        send(dataQueue, struct('action', 'led', 'state', 1));
-                        pause(currentPeriod / 2);
-                        send(dataQueue, struct('action', 'led', 'state', 0));
-                        pause(currentPeriod / 2);
-                    end
-                end
-            end
-        end
-
-
-        function arduinoWorker(~, dataQueue)    %lightweight worker that controls the arduino
-            try
-                arduinoObj = arduino('COM3', 'Uno', 'Libraries', 'Ultrasonic');     %initialise arduino and ultrasoic obj
-                ultrasonicObj = ultrasonic(arduinoObj, 'D11', 'D12');
-                disp('Arduino Worker Started');
-            catch exception
-                disp(['Error initialising arduino: ', exception.message])
-            end
-
-            ledState = 0;   %set led state to off
-
-            try
-                while true
-                    if dataQueue.NumMessages > 0    %check that there are messages to the worker
-                        command = poll(dataQueue, 1);
-                        if isfield(command, 'action')   %if the command is an action
-                            switch command.action
-                                case 'measure'  %if measure command
-                                    try
-                                        currentDistance = readDistance(ultrasonicObj);      %measure current distance
-                                        send(dataQueue, struct('type', 'measurement', 'distance', currentDistance));    %write to dataqueue
-                                    catch
-                                        send(dataQueue, struct('type', 'measurement', 'distance', NaN));                %write to dataqueue
-                                    end
-
-                                case 'led'              %led command
-                                    ledState = command.state;
-                                    writeDigitalPin(arduinoObj,'D13',ledState);         %set led to on or off depending on command state
-                                
-                                case 'readVoltage'          %read voltage command
-                                    voltage = readVoltage(arduinoObj, 'A3');
-                                    send(dataQueue, struct('type', 'voltage', 'value', voltage));    %write to dataqueue
-
-                                otherwise 
-                                    disp('Unknown function')
-                            end
-                        end
-                        pause(0.001);  %prevent cpu running full throttle waiting
-                    end
-                end
-            catch exception
-                disp(['Error in Arduino worker: ', exception.message]);
-            end
-            try
-                delete(arduinoObj);
-            catch exception
-                disp('Failed to delete Arduino obkect.');
-            end
-        end
+        % 
+        % function measurementWorker(~, dataQueue, frequency) %measurement worker
+        %     disp('Measurement worker started.')
+        %     period = 1/frequency;
+        % 
+        %     try 
+        %         while true 
+        %             elapsedTime = toc(timerStart);
+        % 
+        %             if elapsedTime >= period
+        %                 timerStart = tic;
+        %                 send(dataQueue, struct('action', 'measure'));
+        % 
+        %                 response = poll(dataQueue, 1);
+        %                 if isfield(response, 'type') && strcmp(response.type, 'measurement')
+        %                     currentDistance = response.distance;
+        % 
+        %                     if currentDistance >= 0.02 && currentDistance <= 2
+        %                         send(dataQueue, [elapsedTime, currentDistance]);
+        %                     else
+        %                         send(dataQueue, [elapsedTime, NaN]);
+        %                     end
+        %                 end
+        %             else 
+        %                 pause(0.001);
+        %             end
+        %         end
+        %     catch exception
+        %         disp(['Error in measurement worker: ', exception.message])
+        %     end
+        % end
+        % 
+        % 
+        % function alarmWorker(app, dataQueue)    %alarm worker
+        %      while app.IsAlarm      %while alarm is true
+        %         disp('Alarm worker has started.')
+        %         send(dataQueue, struct('action', 'readVoltage'));
+        %         response = poll(dataQueue, 1); %wait for voltage
+        % 
+        %         if isfield(response, 'type') && strcmp(response.type, 'voltage')
+        %             potentiometerVoltage = response.value;  %if voltage recieved turn it into voltage fraction
+        %             voltageFraction = potentiometerVoltage / 5;
+        % 
+        %             alarmThreshold = app.AlarmThresholdEditField.Value;
+        %             if app.RollingAverage <= alarmThreshold
+        %                 alarmMaxRatio = alarmThreshold / 0.02;
+        %                 alarmRatio = alarmThreshold / app.RollingAverage;
+        %                 alarmFactor = alarmRatio / alarmMaxRatio;
+        % 
+        %                 maxFreq = 25 * voltageFraction;
+        %                 currentFreq = maxFreq * alarmFactor;
+        %                 currentPeriod = 1 / currentFreq;
+        % 
+        %                 send(dataQueue, struct('action', 'led', 'state', 1));
+        %                 pause(currentPeriod / 2);
+        %                 send(dataQueue, struct('action', 'led', 'state', 0));
+        %                 pause(currentPeriod / 2);
+        %             end
+        %         end
+        %     end
+        % end
+        % 
+        % 
+        % function arduinoWorker(~, dataQueue)    %lightweight worker that controls the arduino
+        %     try
+        %         arduinoObj = arduino('COM3', 'Uno', 'Libraries', 'Ultrasonic');     %initialise arduino and ultrasoic obj
+        %         ultrasonicObj = ultrasonic(arduinoObj, 'D11', 'D12');
+        %         disp('Arduino Worker Started');
+        %     catch exception
+        %         disp(['Error initialising arduino: ', exception.message])
+        %     end
+        % 
+        %     ledState = 0;   %set led state to off
+        % 
+        %     try
+        %         while true
+        %             if dataQueue.NumMessages > 0    %check that there are messages to the worker
+        %                 command = poll(dataQueue, 1);
+        %                 if isfield(command, 'action')   %if the command is an action
+        %                     switch command.action
+        %                         case 'measure'  %if measure command
+        %                             try
+        %                                 currentDistance = readDistance(ultrasonicObj);      %measure current distance
+        %                                 send(dataQueue, struct('type', 'measurement', 'distance', currentDistance));    %write to dataqueue
+        %                             catch
+        %                                 send(dataQueue, struct('type', 'measurement', 'distance', NaN));                %write to dataqueue
+        %                             end
+        % 
+        %                         case 'led'              %led command
+        %                             ledState = command.state;
+        %                             writeDigitalPin(arduinoObj,'D13',ledState);         %set led to on or off depending on command state
+        % 
+        %                         case 'readVoltage'          %read voltage command
+        %                             voltage = readVoltage(arduinoObj, 'A3');
+        %                             send(dataQueue, struct('type', 'voltage', 'value', voltage));    %write to dataqueue
+        % 
+        %                         otherwise 
+        %                             disp('Unknown function')
+        %                     end
+        %                 end
+        %                 pause(0.001);  %prevent cpu running full throttle waiting
+        %             end
+        %         end
+        %     catch exception
+        %         disp(['Error in Arduino worker: ', exception.message]);
+        %     end
+        %     try
+        %         delete(arduinoObj);
+        %     catch exception
+        %         disp('Failed to delete Arduino obkect.');
+        %     end
+        % end
 
 
         % Changes arrangement of the app based on UIFigure width
