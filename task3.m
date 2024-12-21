@@ -37,9 +37,6 @@ classdef task3 < matlab.apps.AppBase
     properties (Access = private)
         onePanelWidth = 576;
         twoPanelWidth = 768;
-        MeasurementWorker;            %store the parallel measurement task
-        ArduinoWorker;
-        AlarmWorker;
         DataQueue;                  % queu for parallel communication
         MeasurementLoop;
         IsMeasuring = false;        %measurement status flag            
@@ -51,6 +48,7 @@ classdef task3 < matlab.apps.AppBase
         InputUpdateTimer            %timer to check for input changes
         CurrentFrequency = 0;      %store prev freq
         IsAlarm = false;
+        rollingAvgDataQueue;
     end
 
     % Callbacks that handle component events
@@ -61,8 +59,9 @@ classdef task3 < matlab.apps.AppBase
                     disp('Measurements already running.');
                     return;
                 end
-        
+                
                 app.DataQueue = parallel.pool.DataQueue;
+                app.rollingAvgDataQueue = parallel.pool.DataQueue;
                 afterEach(app.DataQueue, @(data)updatePlotCallback(app, data));
         
                 frequency = app.TargetFrequencyEditField.Value;
@@ -76,7 +75,7 @@ classdef task3 < matlab.apps.AppBase
                 disp(['Starting measurement loop with frequency: ', num2str(frequency)]);
 
         
-                app.MeasurementLoop = parfeval(@app.measurementLoop, 0, app.DataQueue, frequency);
+                app.MeasurementLoop = parfeval(@app.measurementLoop, 0, app.DataQueue, frequency, app.IsAlarm, app.AlarmThresholdEditField.Value, app.rollingAvgDataQueue);
                 %app.ArduinoWorker = parfeval(gcp, @arduinoWorker, 0, app.DataQueue);
                 disp('Measurement task started.');
             catch exception
@@ -98,241 +97,129 @@ classdef task3 < matlab.apps.AppBase
         end
 
     
-        function updatePlotCallback(app, data)      %updates plot and output
-            app.CurrentFrequencyEditField.Value = 1 / data(1);  %update freq
-
+      function updatePlotCallback(app, data)      % Updates plot with rolling average only
+            app.CurrentFrequencyEditField.Value = 1 / data(1);  % Update frequency
+            app.updateBuffer(data(2));  % Update the buffer with the new reading
+            
+            % If there is no plot, initialize it
             if isempty(app.UIAxes.Children)
-                % initialize the plot
-                line = plot(app.UIAxes, 0, data(2), '-');
-                app.UIAxes.XLim = [0 5*app.CurrentFrequency]; 
+                % Initialize only the plot for the rolling average
+                lineAvg = plot(app.UIAxes, 0, app.RollingAverage, '-');  % Plot for the rolling average
+                app.UIAxes.XLim = [0, 5 * app.CurrentFrequency]; 
                 app.UIAxes.YLimMode = 'auto';
                 app.UIAxes.XLimMode = 'manual'; 
             else
-                %update existing plot
-                line = app.UIAxes.Children(1);
-                newX = line.XData(end) + 1; 
-                line.XData = [line.XData newX];
-                line.YData = [line.YData data(2)]; 
+                % Update the rolling average plot
+                lineAvg = app.UIAxes.Children(1);  % Only the first plot (rolling average)
+                newX = lineAvg.XData(end) + 1; 
+                lineAvg.XData = [lineAvg.XData newX];
+                lineAvg.YData = [lineAvg.YData app.RollingAverage];  % Plot the rolling average
         
-                    %x axis so that it scrolls
+                % Ensure valid XLim by checking the new range
                 if newX > app.UIAxes.XLim(2)
-                    app.UIAxes.XLim = [newX - 5*app.CurrentFrequency, newX]; %scroll so that it takes 5 sec to cross window
+                    % Calculate the new limits, ensuring they are always valid numbers
+                    newXLimStart = newX - 5 * app.CurrentFrequency;
+                    newXLimEnd = newX;
+                    
+                    % Ensure that newXLimStart is not NaN or invalid
+                    if ~isnan(newXLimStart) && isfinite(newXLimStart)
+                        app.UIAxes.XLim = [newXLimStart, newXLimEnd];
+                    else
+                        % If the calculation goes wrong, keep a default value
+                        app.UIAxes.XLim = [0, 5 * app.CurrentFrequency];
+                    end
                 end
-        
-                app.UIAxes.YLimMode = 'auto';
+                ylimMin = round(app.RollingAverage*0.5, 2, "significant");
+                ylimMax = round(app.RollingAverage*1.5, 2, "significant");
+                app.UIAxes.YLim=[ylimMin ylimMax];
+                app.UIAxes.YLimMode = 'manual';
+                app.UIAxes.YGrid = 'on';
             end
+        end
         
-            %update the rolling average
-            app.updateBuffer(data(2));
+        function updateBuffer(app, newReading)     % Updates the rolling buffer
+            % Add the current reading to the buffer
+            app.MeasurementBuffer = [app.MeasurementBuffer, newReading];   
+            app.BufferSize = app.RollingAverageEditField.Value;
+            
+            % If the buffer exceeds the specified size, trim it
+            if length(app.MeasurementBuffer) > app.BufferSize
+                app.MeasurementBuffer = app.MeasurementBuffer(end - app.BufferSize + 1:end);  % Trim the buffer
+            end
+            
+            % Calculate and update the rolling average
+            app.RollingAverage = mean(app.MeasurementBuffer);
+            app.RollingAvgValueEditField.Value = app.RollingAverage;
+
+            send(app.rollingAvgDataQueue, app.RollingAverage)
         end
 
 
-        function updateBuffer(app, newReading)     %updates the rolling buffer
-             app.MeasurementBuffer = [app.MeasurementBuffer, newReading];   %add current reading to buffer
-             app.BufferSize = app.RollingAverageEditField.Value;
-             if length(app.MeasurementBuffer) > app.BufferSize
-                 app.MeasurementBuffer = app.MeasurementBuffer(length(app.MeasurementBuffer)-app.BufferSize+1:end);      %reduce buffer to desired size
-             end
-             app.RollingAverage = mean(app.MeasurementBuffer);
-             app.RollingAvgValueEditField.Value = app.RollingAverage;
-         end
-
         %the parallel measurement loop
-        function measurementLoop(~, dataQueue, frequency )
-             try
-                % Arduino and sensor setup
-
-                arduinoObj = arduino('COM3', 'Uno', 'Libraries', 'Ultrasonic');
-                ultrasonicObj = ultrasonic(arduinoObj, 'D11', 'D12');
-                disp('Measurement loop started');
-            catch exception
-                disp(['Error initializing Arduino: ', exception.message]);
-                return; % Exit the loop if initialization fails
-            end
+        function measurementLoop(~, dataQueue, frequency, IsAlarm, AlarmThresholdEditFieldValue, RollingAverage)
+            arduinoObj = arduino('COM3', 'Uno', 'Libraries', 'Ultrasonic'); %arduino and ultrasound setup
+            ultrasonicObj = ultrasonic(arduinoObj, 'D11', 'D12');
             period = 1 / frequency;  
             timerStart = tic;    %start the timer
 
-            try
-                while true
-                    elapsedTime = toc(timerStart);
 
+            while true
+                elapsedTime = toc(timerStart);
+                
+                if IsAlarm
+                    alarmThreshold = AlarmThresholdEditFieldValue;
+                     if RollingAverage(data(1)) <= alarmThreshold
 
-                    if elapsedTime >= period
-                        timerStart = tic;
-
-                        try
-                            currentDistance = readDistance(ultrasonicObj); %measurement
-                        catch exception
-                            disp(['Error reading distance: ', exception.message]);
-                            currentDistance = NaN; %nan for failed measurements
-                        end
-
-                        %send data
-                        if currentDistance >=0.02 && currentDistance <= 2
-                            send(dataQueue, [elapsedTime, currentDistance]);
-                        else 
-                            currentDistance = NaN;
-                            send(dataQueue, [elapsedTime, currentDistance]);
-                        end
-                    else
-                        pause(0.001); % Prevent busy waiting
+                        alarmMaxRatio = alarmThreshold/0.02;
+                        alarmRatio = alarmThreshold/RollingAverage(data(1));
+                        alarmFactor = alarmRatio/alarmMaxRatio;
+                        potentiometerVoltage = readVoltage(a, 'A3');
+                        voltageFraction = potentiometerVoltage/5;
+    
+                        maxFreq = 100*voltageFraction;
+                        currentFreq = maxFreq*alarmFactor;
+                        currentPeriod = 1/currentFreq;
+    
+                        writeDigitalPin(app.arduinoObj, 'D13', 1)
+                        pause(currentPeriod/2)
+                        writeDigitalPin(app.arduinoObj, 'D13', 0)
+                        pause(currentPeriod/2)
+    
+    
                     end
+            
                 end
-            catch exception
-                disp(['Error in measurement loop: ', exception.message]);
+
+                if elapsedTime >= period
+                    timerStart = tic;
+
+                    try
+                        currentDistance = readDistance(ultrasonicObj); %measurement
+                    catch exception
+                        disp(['Error reading distance: ', exception.message]);
+                        currentDistance = NaN; %nan for failed measurements
+                    end
+
+                    %send data
+                    if currentDistance >=0.02 && currentDistance <= 2
+                        send(dataQueue, [elapsedTime, currentDistance]);
+                    else 
+                        currentDistance = NaN;
+                        send(dataQueue, [elapsedTime, currentDistance]);
+                    end
+                else
+                    pause(0.001); % Prevent busy waiting
+                end
             end
 
-            % Cleanup
-            try
-                delete(arduinoObj);
-            catch
-                disp('Failed to delete Arduino object.');
-            end
+
+
+            delete(arduinoObj);
+
         end
 
-        %function alarmLoop(app)
-        % 
-        %     while app.IsAlarm
-        % 
-        %         alarmThreshold = app.AlarmThresholdEditField.Value;
-        %         if app.RollingAverage <= alarmThreshold
-        % 
-        %             alarmMaxRatio = alarmThreshold/0.02;
-        %             alarmRatio = alarmThreshold/app.RollingAverage;
-        %             alarmFactor = alarmRatio/alarmMaxRatio;
-        %             potentiometerVoltage = readVoltage(a, 'A3');
-        %             voltageFraction = potentiometerVoltage/5;
-        % 
-        %             maxFreq = 100*voltageFraction;
-        %             currentFreq = maxFreq*alarmFactor;
-        %             currentPeriod = 1/currentFreq;
-        % 
-        %             writeDigitalPin(app.arduinoObj, 'D13', 1)
-        %             pause(currentPeriod/2)
-        %             writeDigitalPin(app.arduinoObj, 'D13', 0)
-        %             pause(currentPeriod/2)
-        % 
-        % 
-        %         end
-        %     end
-        % 
-        % 
-        % end
 
-
-
-        % 
-        % function measurementWorker(~, dataQueue, frequency) %measurement worker
-        %     disp('Measurement worker started.')
-        %     period = 1/frequency;
-        % 
-        %     try 
-        %         while true 
-        %             elapsedTime = toc(timerStart);
-        % 
-        %             if elapsedTime >= period
-        %                 timerStart = tic;
-        %                 send(dataQueue, struct('action', 'measure'));
-        % 
-        %                 response = poll(dataQueue, 1);
-        %                 if isfield(response, 'type') && strcmp(response.type, 'measurement')
-        %                     currentDistance = response.distance;
-        % 
-        %                     if currentDistance >= 0.02 && currentDistance <= 2
-        %                         send(dataQueue, [elapsedTime, currentDistance]);
-        %                     else
-        %                         send(dataQueue, [elapsedTime, NaN]);
-        %                     end
-        %                 end
-        %             else 
-        %                 pause(0.001);
-        %             end
-        %         end
-        %     catch exception
-        %         disp(['Error in measurement worker: ', exception.message])
-        %     end
-        % end
-        % 
-        % 
-        % function alarmWorker(app, dataQueue)    %alarm worker
-        %      while app.IsAlarm      %while alarm is true
-        %         disp('Alarm worker has started.')
-        %         send(dataQueue, struct('action', 'readVoltage'));
-        %         response = poll(dataQueue, 1); %wait for voltage
-        % 
-        %         if isfield(response, 'type') && strcmp(response.type, 'voltage')
-        %             potentiometerVoltage = response.value;  %if voltage recieved turn it into voltage fraction
-        %             voltageFraction = potentiometerVoltage / 5;
-        % 
-        %             alarmThreshold = app.AlarmThresholdEditField.Value;
-        %             if app.RollingAverage <= alarmThreshold
-        %                 alarmMaxRatio = alarmThreshold / 0.02;
-        %                 alarmRatio = alarmThreshold / app.RollingAverage;
-        %                 alarmFactor = alarmRatio / alarmMaxRatio;
-        % 
-        %                 maxFreq = 25 * voltageFraction;
-        %                 currentFreq = maxFreq * alarmFactor;
-        %                 currentPeriod = 1 / currentFreq;
-        % 
-        %                 send(dataQueue, struct('action', 'led', 'state', 1));
-        %                 pause(currentPeriod / 2);
-        %                 send(dataQueue, struct('action', 'led', 'state', 0));
-        %                 pause(currentPeriod / 2);
-        %             end
-        %         end
-        %     end
-        % end
-        % 
-        % 
-        % function arduinoWorker(~, dataQueue)    %lightweight worker that controls the arduino
-        %     try
-        %         arduinoObj = arduino('COM3', 'Uno', 'Libraries', 'Ultrasonic');     %initialise arduino and ultrasoic obj
-        %         ultrasonicObj = ultrasonic(arduinoObj, 'D11', 'D12');
-        %         disp('Arduino Worker Started');
-        %     catch exception
-        %         disp(['Error initialising arduino: ', exception.message])
-        %     end
-        % 
-        %     ledState = 0;   %set led state to off
-        % 
-        %     try
-        %         while true
-        %             if dataQueue.NumMessages > 0    %check that there are messages to the worker
-        %                 command = poll(dataQueue, 1);
-        %                 if isfield(command, 'action')   %if the command is an action
-        %                     switch command.action
-        %                         case 'measure'  %if measure command
-        %                             try
-        %                                 currentDistance = readDistance(ultrasonicObj);      %measure current distance
-        %                                 send(dataQueue, struct('type', 'measurement', 'distance', currentDistance));    %write to dataqueue
-        %                             catch
-        %                                 send(dataQueue, struct('type', 'measurement', 'distance', NaN));                %write to dataqueue
-        %                             end
-        % 
-        %                         case 'led'              %led command
-        %                             ledState = command.state;
-        %                             writeDigitalPin(arduinoObj,'D13',ledState);         %set led to on or off depending on command state
-        % 
-        %                         case 'readVoltage'          %read voltage command
-        %                             voltage = readVoltage(arduinoObj, 'A3');
-        %                             send(dataQueue, struct('type', 'voltage', 'value', voltage));    %write to dataqueue
-        % 
-        %                         otherwise 
-        %                             disp('Unknown function')
-        %                     end
-        %                 end
-        %                 pause(0.001);  %prevent cpu running full throttle waiting
-        %             end
-        %         end
-        %     catch exception
-        %         disp(['Error in Arduino worker: ', exception.message]);
-        %     end
-        %     try
-        %         delete(arduinoObj);
-        %     catch exception
-        %         disp('Failed to delete Arduino obkect.');
-        %     end
-        % end
+      
 
 
         % Changes arrangement of the app based on UIFigure width
