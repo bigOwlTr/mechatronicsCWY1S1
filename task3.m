@@ -47,9 +47,11 @@ classdef task3 < matlab.apps.AppBase
         callibrationOffset = 3.9611/1000;     %callibration offset converted back to mm 
         InputUpdateTimer            %timer to check for input changes
         CurrentFrequency = 0;      %store prev freq
-        IsAlarm = false;
+        IsAlarm = 'Off';
         rollingAvgDataQueue;
+
     end
+   
 
     % Callbacks that handle component events
     methods (Access = private)
@@ -74,10 +76,11 @@ classdef task3 < matlab.apps.AppBase
                 app.CurrentFrequency = frequency;
                 disp(['Starting measurement loop with frequency: ', num2str(frequency)]);
 
-        
-                app.MeasurementLoop = parfeval(@app.measurementLoop, 0, app.DataQueue, frequency, app.IsAlarm, app.AlarmThresholdEditField.Value, app.rollingAvgDataQueue);
-                %app.ArduinoWorker = parfeval(gcp, @arduinoWorker, 0, app.DataQueue);
+                disp(app.IsAlarm)
+                app.MeasurementLoop = parfeval(@app.measurementLoop, 0, app, app.DataQueue, frequency, app.IsAlarm, app.AlarmThresholdEditField.Value, app.rollingAvgDataQueue);
+                
                 disp('Measurement task started.');
+                
             catch exception
                 app.IsMeasuring = false;
                 uialert(app.UIFigure, ['Error: ', exception.message], 'Measurement Error');
@@ -156,47 +159,57 @@ classdef task3 < matlab.apps.AppBase
 
 
         %the parallel measurement loop
-        function measurementLoop(~, dataQueue, frequency, IsAlarm, AlarmThresholdEditFieldValue, RollingAverage)
-            arduinoObj = arduino('COM3', 'Uno', 'Libraries', 'Ultrasonic'); %arduino and ultrasound setup
+        function measurementLoop(app, ~, dataQueue, frequency, IsAlarm, AlarmThresholdEditFieldValue, RollingAverage)
+         
+           arduinoObj = arduino('COM3', 'Uno', 'Libraries', 'Ultrasonic'); %arduino and ultrasound setup
             ultrasonicObj = ultrasonic(arduinoObj, 'D11', 'D12');
             period = 1 / frequency;  
             timerStart = tic;    %start the timer
 
 
             while true
-                elapsedTime = toc(timerStart);
                 
-                if IsAlarm
-                    alarmThreshold = AlarmThresholdEditFieldValue;
-                     if RollingAverage(data(1)) <= alarmThreshold
-
-                        alarmMaxRatio = alarmThreshold/0.02;
-                        alarmRatio = alarmThreshold/RollingAverage(data(1));
-                        alarmFactor = alarmRatio/alarmMaxRatio;
-                        potentiometerVoltage = readVoltage(a, 'A3');
-                        voltageFraction = potentiometerVoltage/5;
-    
-                        maxFreq = 100*voltageFraction;
-                        currentFreq = maxFreq*alarmFactor;
-                        currentPeriod = 1/currentFreq;
-    
-                        writeDigitalPin(app.arduinoObj, 'D13', 1)
-                        pause(currentPeriod/2)
-                        writeDigitalPin(app.arduinoObj, 'D13', 0)
-                        pause(currentPeriod/2)
-    
-    
-                    end
-            
+                
+                % if IsAlarm
+                %     writeDigitalPin(arduinoObj, 'D13', 1)
+                %     %alarmThreshold = AlarmThresholdEditFieldValue;
+                %      % if RollingAverage(data(1)) <= alarmThreshold
+                %      % 
+                %      %    alarmMaxRatio = alarmThreshold/0.02;
+                %      %    alarmRatio = alarmThreshold/RollingAverage(data(1));
+                %      %    alarmFactor = alarmRatio/alarmMaxRatio;
+                %      %    potentiometerVoltage = readVoltage(a, 'A3');
+                %      %    voltageFraction = potentiometerVoltage/5;
+                %      % 
+                %      %    maxFreq = 100*voltageFraction;
+                %      %    currentFreq = maxFreq*alarmFactor;
+                %      %    currentPeriod = 1/currentFreq;
+                %      % 
+                %      %    writeDigitalPin(app.arduinoObj, 'D13', 1)
+                %      %    pause(currentPeriod/2)
+                %      %    writeDigitalPin(app.arduinoObj, 'D13', 0)
+                %      %    pause(currentPeriod/2)
+                %      % end
+                % else 
+                %     writeDigitalPin(arduinoObj, 'D13', 0)
+                % end
+                if IsAlarm == "On"
+                    writeDigitalPin(arduinoObj, 'D13', 1); 
+                else
+                    writeDigitalPin(arduinoObj, 'D13', 0);
                 end
 
+                 
+
+
+                elapsedTime = toc(timerStart);
                 if elapsedTime >= period
                     timerStart = tic;
 
                     try
                         currentDistance = readDistance(ultrasonicObj); %measurement
+
                     catch exception
-                        disp(['Error reading distance: ', exception.message]);
                         currentDistance = NaN; %nan for failed measurements
                     end
 
@@ -210,6 +223,7 @@ classdef task3 < matlab.apps.AppBase
                 else
                     pause(0.001); % Prevent busy waiting
                 end
+
             end
 
 
@@ -326,12 +340,10 @@ classdef task3 < matlab.apps.AppBase
             end
         
             function AlarmSwitchValueChanged(app, ~)
-                app.IsAlarm = app.AlarmSwitch.Value;
-                if app.IsAlarm
-                    app.AlarmWorker = parfeval(gcp, @alarmWorker, 0, dataQueue);
-                else
-                    app.AlarmWorker = [];
-                end   
+                switchState = app.AlarmSwitch.Value; 
+                app.IsAlarm = switchState;
+                disp(['IsAlarm is now: ', app.IsAlarm]);
+   
             end
 
    
