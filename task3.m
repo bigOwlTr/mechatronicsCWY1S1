@@ -23,12 +23,12 @@ classdef task3 < matlab.apps.AppBase
         RecordingsTable                 matlab.ui.control.Table
         UIAxes                          matlab.ui.control.UIAxes
         RightPanel                      matlab.ui.container.Panel
-        Switch4                         matlab.ui.control.Switch
-        Switch4Label                    matlab.ui.control.Label
+        requiredarkSwitch               matlab.ui.control.Switch
+        requiredarkSwitchLabel                    matlab.ui.control.Label
         AlarmSwitch                     matlab.ui.control.Switch
         AlarmSwitchLabel                matlab.ui.control.Label
-        Switch2                         matlab.ui.control.Switch
-        Switch2Label                    matlab.ui.control.Label
+        buttonToRecord                  matlab.ui.control.Switch
+        buttonToRecordLabel             matlab.ui.control.Label
         RollingAvgValueEditFieldLabel   matlab.ui.control.Label
         RollingAvgValueEditField        matlab.ui.control.NumericEditField
     end
@@ -48,7 +48,9 @@ classdef task3 < matlab.apps.AppBase
         InputUpdateTimer            %timer to check for input changes
         CurrentFrequency = 0;      %store prev freq
         IsAlarm = 'Off';
-        rollingAvgDataQueue;
+        buttonToRecordState = 'Off';
+        requireDarkState = 'Off';
+
 
     end
    
@@ -63,7 +65,6 @@ classdef task3 < matlab.apps.AppBase
                 end
                 
                 app.DataQueue = parallel.pool.DataQueue;
-                app.rollingAvgDataQueue = parallel.pool.DataQueue;
                 afterEach(app.DataQueue, @(data)updatePlotCallback(app, data));
         
                 frequency = app.TargetFrequencyEditField.Value;
@@ -72,12 +73,22 @@ classdef task3 < matlab.apps.AppBase
                     return;
                 end
         
+                if isempty(gcp('nocreate'))
+                    % If no pool is running, create a new pool with 1 worker
+                    parpool(1);
+                    disp('Parallel pool started with 1 worker.');
+                else
+                    disp('Parallel pool is already running.');
+                end
+
+
                 app.IsMeasuring = true;
                 app.CurrentFrequency = frequency;
                 disp(['Starting measurement loop with frequency: ', num2str(frequency)]);
 
                 disp(app.IsAlarm)
-                app.MeasurementLoop = parfeval(@app.measurementLoop, 0, app, app.DataQueue, frequency, app.IsAlarm, app.AlarmThresholdEditField.Value, app.rollingAvgDataQueue);
+                disp(app.requireDarkState)
+                app.MeasurementLoop = parfeval(@app.measurementLoop, 0, app.DataQueue, frequency, app.IsAlarm, app.AlarmThresholdEditField.Value, app.buttonToRecordState, app.requireDarkState);
                 
                 disp('Measurement task started.');
                 
@@ -100,35 +111,36 @@ classdef task3 < matlab.apps.AppBase
         end
 
     
-      function updatePlotCallback(app, data)      % Updates plot with rolling average only
+      function updatePlotCallback(app, data)    
             app.CurrentFrequencyEditField.Value = 1 / data(1);  % Update frequency
-            app.updateBuffer(data(2));  % Update the buffer with the new reading
+            app.updateBuffer(data(2)); 
+            if data(3) == true
+                app.RecordMeasurementButtonPushed()
+            end
             
-            % If there is no plot, initialize it
+            
             if isempty(app.UIAxes.Children)
-                % Initialize only the plot for the rolling average
-                lineAvg = plot(app.UIAxes, 0, app.RollingAverage, '-');  % Plot for the rolling average
+                lineAvg = plot(app.UIAxes, 0, app.RollingAverage, '-');
                 app.UIAxes.XLim = [0, 5 * app.CurrentFrequency]; 
                 app.UIAxes.YLimMode = 'auto';
                 app.UIAxes.XLimMode = 'manual'; 
             else
-                % Update the rolling average plot
-                lineAvg = app.UIAxes.Children(1);  % Only the first plot (rolling average)
+       
+                lineAvg = app.UIAxes.Children(1); 
                 newX = lineAvg.XData(end) + 1; 
                 lineAvg.XData = [lineAvg.XData newX];
-                lineAvg.YData = [lineAvg.YData app.RollingAverage];  % Plot the rolling average
+                lineAvg.YData = [lineAvg.YData app.RollingAverage]; 
         
-                % Ensure valid XLim by checking the new range
+              
                 if newX > app.UIAxes.XLim(2)
-                    % Calculate the new limits, ensuring they are always valid numbers
                     newXLimStart = newX - 5 * app.CurrentFrequency;
                     newXLimEnd = newX;
                     
-                    % Ensure that newXLimStart is not NaN or invalid
+               
                     if ~isnan(newXLimStart) && isfinite(newXLimStart)
                         app.UIAxes.XLim = [newXLimStart, newXLimEnd];
                     else
-                        % If the calculation goes wrong, keep a default value
+                    
                         app.UIAxes.XLim = [0, 5 * app.CurrentFrequency];
                     end
                 end
@@ -154,83 +166,95 @@ classdef task3 < matlab.apps.AppBase
             app.RollingAverage = mean(app.MeasurementBuffer);
             app.RollingAvgValueEditField.Value = app.RollingAverage;
 
-            send(app.rollingAvgDataQueue, app.RollingAverage)
+          
         end
 
 
         %the parallel measurement loop
-        function measurementLoop(app, ~, dataQueue, frequency, IsAlarm, AlarmThresholdEditFieldValue, RollingAverage)
-         
-           arduinoObj = arduino('COM3', 'Uno', 'Libraries', 'Ultrasonic'); %arduino and ultrasound setup
-            ultrasonicObj = ultrasonic(arduinoObj, 'D11', 'D12');
-            period = 1 / frequency;  
-            timerStart = tic;    %start the timer
+        function measurementLoop(~, dataQueue, frequency, IsAlarm, AlarmThresholdEditFieldValue, buttonToRecordState, requireDarkState)
+            alarmThreshold = AlarmThresholdEditFieldValue;   % Alarm threshold set by the user
+            arduinoObj = arduino('COM3', 'Uno', 'Libraries', 'Ultrasonic');  % Arduino setup
+            ultrasonicObj = ultrasonic(arduinoObj, 'D11', 'D12');  % Ultrasonic sensor setup
+            measurementTimerStart = tic;  
+            alarmTimerStart = tic;  
+            alarmMaxRatio = alarmThreshold / 0.02;  
+            currentDistance = 0;
+            buttonCheckPeriod = 0.1;
+            buttonCheckTimer = tic;
+            buttonCooldown = tic;
+            photoDiodeVoltage = readVoltage(arduinoObj, 'A2');
+            ledOnState = false;
 
 
-            while true
-                
-                
-                % if IsAlarm
-                %     writeDigitalPin(arduinoObj, 'D13', 1)
-                %     %alarmThreshold = AlarmThresholdEditFieldValue;
-                %      % if RollingAverage(data(1)) <= alarmThreshold
-                %      % 
-                %      %    alarmMaxRatio = alarmThreshold/0.02;
-                %      %    alarmRatio = alarmThreshold/RollingAverage(data(1));
-                %      %    alarmFactor = alarmRatio/alarmMaxRatio;
-                %      %    potentiometerVoltage = readVoltage(a, 'A3');
-                %      %    voltageFraction = potentiometerVoltage/5;
-                %      % 
-                %      %    maxFreq = 100*voltageFraction;
-                %      %    currentFreq = maxFreq*alarmFactor;
-                %      %    currentPeriod = 1/currentFreq;
-                %      % 
-                %      %    writeDigitalPin(app.arduinoObj, 'D13', 1)
-                %      %    pause(currentPeriod/2)
-                %      %    writeDigitalPin(app.arduinoObj, 'D13', 0)
-                %      %    pause(currentPeriod/2)
-                %      % end
-                % else 
-                %     writeDigitalPin(arduinoObj, 'D13', 0)
-                % end
-                if IsAlarm == "On"
-                    writeDigitalPin(arduinoObj, 'D13', 1); 
-                else
-                    writeDigitalPin(arduinoObj, 'D13', 0);
-                end
+            while true    
+                elapsedMeasurementTime = toc(measurementTimerStart);
 
-                 
-
-
-                elapsedTime = toc(timerStart);
-                if elapsedTime >= period
-                    timerStart = tic;
+                if elapsedMeasurementTime >= 1 / frequency
+                    measurementTimerStart = tic; 
 
                     try
-                        currentDistance = readDistance(ultrasonicObj); %measurement
-
+                        currentDistance = readDistance(ultrasonicObj);
                     catch exception
-                        currentDistance = NaN; %nan for failed measurements
+                        currentDistance = NaN; 
                     end
 
-                    %send data
-                    if currentDistance >=0.02 && currentDistance <= 2
-                        send(dataQueue, [elapsedTime, currentDistance]);
-                    else 
-                        currentDistance = NaN;
-                        send(dataQueue, [elapsedTime, currentDistance]);
+                    if currentDistance >= 0.02 && currentDistance <= 2
+                        send(dataQueue, [elapsedMeasurementTime, currentDistance, false]);  
+                    else
+                        send(dataQueue, [elapsedMeasurementTime, NaN, false]); 
                     end
-                else
-                    pause(0.001); % Prevent busy waiting
                 end
 
+
+                if buttonToRecordState == "On"
+                    buttonCheckElapsed = toc(buttonCheckTimer);
+                    if buttonCheckElapsed >= buttonCheckPeriod && toc(buttonCooldown) >= 0.75
+                        buttonCheckTimer = tic;
+                        if readVoltage(arduinoObj, 'A4') >= 4.88
+                            send(dataQueue, [elapsedMeasurementTime, currentDistance, true]);
+                            buttonCooldown = tic;
+                        end
+                    end
+                end
+
+                if IsAlarm == "On"  && currentDistance <= alarmThreshold
+                    if requireDarkState == "Off" || photoDiodeVoltage <= 0.36
+
+                        alarmRatio = alarmThreshold / currentDistance;
+                        distanceFactor = alarmRatio / alarmMaxRatio;
+
+                        potentiometerVoltage = readVoltage(arduinoObj, 'A3');
+
+                        alarmFreq =  100 * potentiometerVoltage * distanceFactor;
+
+                        ledOnTime = 1 / alarmFreq;
+
+                        alarmElapsedTime = toc(alarmTimerStart);
+
+                        if ~ledOnState 
+                            if alarmElapsedTime > ledOnTime
+                                writeDigitalPin(arduinoObj, 'D13', 1);
+                                ledOnState = true;
+                            end
+                        else
+                            writeDigitalPin(arduinoObj, 'D13', 0);
+                            ledOnState = false;
+                            alarmTimerStart = tic;
+                            photoDiodeVoltage = readVoltage(arduinoObj, 'A2');
+                            alarmTimerStart = tic;
+                        end
+                    else
+                        photoDiodeVoltage = readVoltage(arduinoObj, 'A2');
+                    end
+
+                end
+                
+
+                pause(0.001);
             end
 
-
-
-            delete(arduinoObj);
-
         end
+
 
 
       
@@ -339,13 +363,17 @@ classdef task3 < matlab.apps.AppBase
                 end
             end
         
-            function AlarmSwitchValueChanged(app, ~)
-                switchState = app.AlarmSwitch.Value; 
-                app.IsAlarm = switchState;
-                disp(['IsAlarm is now: ', app.IsAlarm]);
-   
+            function AlarmSwitchValueChanged(app, ~) 
+                app.IsAlarm = app.AlarmSwitch.Value; 
             end
 
+            function buttonToRecordValueChanged(app, ~)
+                app.buttonToRecordState = app.buttonToRecord.Value; 
+            end
+
+            function requireDarkValueChanged(app, ~)
+                app.requireDarkState = app.requiredarkSwitch.Value; 
+            end
    
         function createComponents(app)
 
@@ -448,12 +476,14 @@ classdef task3 < matlab.apps.AppBase
             app.AlarmThresholdEditFieldLabel.Layout.Row = 7;
             app.AlarmThresholdEditFieldLabel.Layout.Column = 1;
             app.AlarmThresholdEditFieldLabel.Text = 'Alarm Threshold';
-
+        
 
             % Create AlarmThresholdEditField
             app.AlarmThresholdEditField = uieditfield(app.GridLayout2, 'numeric');
             app.AlarmThresholdEditField.Layout.Row = 7;
             app.AlarmThresholdEditField.Layout.Column = 2;
+            app.AlarmThresholdEditField.Value = 0.5;
+
 
             % Create CenterPanel
             app.CenterPanel = uipanel(app.GridLayout);
@@ -499,20 +529,21 @@ classdef task3 < matlab.apps.AppBase
             app.RightPanel.Layout.Row = 1;
             app.RightPanel.Layout.Column = 3;
 
-            % Create Switch2Label
-            app.Switch2Label = uilabel(app.RightPanel);
-            app.Switch2Label.HorizontalAlignment = 'center';
-            app.Switch2Label.Position = [132 377 47 22];
-            app.Switch2Label.Text = 'Switch2';
+            % Create buttonToRecordLabel
+            app.buttonToRecordLabel = uilabel(app.RightPanel);
+            app.buttonToRecordLabel.HorizontalAlignment = 'center';
+            app.buttonToRecordLabel.Position = [105 385 100 22];
+            app.buttonToRecordLabel.Text = 'Button to record';
 
-            % Create Switch2
-            app.Switch2 = uiswitch(app.RightPanel, 'slider');
-            app.Switch2.Position = [132 414 45 20];
+            % Create buttonToRecord
+            app.buttonToRecord = uiswitch(app.RightPanel, 'slider');
+            app.buttonToRecord.Position = [130 415 45 20];
+            app.buttonToRecord.ValueChangedFcn = createCallbackFcn(app, @buttonToRecordValueChanged, true);
 
             % Create AlarmSwitchLabel
             app.AlarmSwitchLabel = uilabel(app.RightPanel);
             app.AlarmSwitchLabel.HorizontalAlignment = 'center';
-            app.AlarmSwitchLabel.Position = [36 378 36 22];
+            app.AlarmSwitchLabel.Position = [36 385 36 22];
             app.AlarmSwitchLabel.Text = 'Alarm';
 
             % Create AlarmSwitch
@@ -520,15 +551,17 @@ classdef task3 < matlab.apps.AppBase
             app.AlarmSwitch.Position = [30 415 45 20];
             app.AlarmSwitch.ValueChangedFcn = createCallbackFcn(app, @AlarmSwitchValueChanged, true);
 
-            % Create Switch4Label
-            app.Switch4Label = uilabel(app.RightPanel);
-            app.Switch4Label.HorizontalAlignment = 'center';
-            app.Switch4Label.Position = [29 282 47 22];
-            app.Switch4Label.Text = 'Switch4';
+            % Create requiredarkSwitchLabel
+            app.requiredarkSwitchLabel = uilabel(app.RightPanel);
+            app.requiredarkSwitchLabel.HorizontalAlignment = 'center';
+            app.requiredarkSwitchLabel.Position = [15 274 80 44];
+            app.requiredarkSwitchLabel.WordWrap = 'on';
+            app.requiredarkSwitchLabel.Text = 'Require dark for alarm';
 
-            % Create Switch4
-            app.Switch4 = uiswitch(app.RightPanel, 'slider');
-            app.Switch4.Position = [29 319 45 20];
+            % Create requiredarkSwitch
+            app.requiredarkSwitch = uiswitch(app.RightPanel, 'slider');
+            app.requiredarkSwitch.Position = [29 319 45 20];
+            app.requiredarkSwitch.ValueChangedFcn = createCallbackFcn(app, @requireDarkValueChanged, true);
 
             % Show the figure after all components are created
             app.UIFigure.Visible = 'on';
