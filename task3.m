@@ -24,7 +24,7 @@ classdef task3 < matlab.apps.AppBase
         UIAxes                          matlab.ui.control.UIAxes
         RightPanel                      matlab.ui.container.Panel
         requiredarkSwitch               matlab.ui.control.Switch
-        requiredarkSwitchLabel                    matlab.ui.control.Label
+        requiredarkSwitchLabel          matlab.ui.control.Label
         AlarmSwitch                     matlab.ui.control.Switch
         AlarmSwitchLabel                matlab.ui.control.Label
         buttonToRecord                  matlab.ui.control.Switch
@@ -111,7 +111,7 @@ classdef task3 < matlab.apps.AppBase
         end
 
     
-      function updatePlotCallback(app, data)    
+        function updatePlotCallback(app, data)    
             app.CurrentFrequencyEditField.Value = 1 / data(1);  % Update frequency
             app.updateBuffer(data(2)); 
             if data(3) == true
@@ -256,10 +256,6 @@ classdef task3 < matlab.apps.AppBase
         end
 
 
-
-      
-
-
         % Changes arrangement of the app based on UIFigure width
         function updateAppLayout(app, ~)
             currentFigureWidth = app.UIFigure.Position(3);
@@ -300,81 +296,81 @@ classdef task3 < matlab.apps.AppBase
     % Component initialization
     methods (Access = private)
 
-            % Callback for StartButton
-            function StartButtonPushed(app, ~)
-                app.startMeasurements();  % Starts the measurement process
-            end
+        % Callback for StartButton
+        function StartButtonPushed(app, ~)
+            app.startMeasurements();  % Starts the measurement process
+        end
 
-            % Callback for StopButton
-            function StopButtonPushed(app, ~)
-                app.stopMeasurements();  % Stops the measurement process
-            end
+        % Callback for StopButton
+        function StopButtonPushed(app, ~)
+            app.stopMeasurements();  % Stops the measurement process
+        end
 
-            % Callback for RecordMeasurementButton
-            function RecordMeasurementButtonPushed(app, ~)
-                currentMeasurement = app.RollingAverage;
-                if ~isnan(currentMeasurement)
-                    currentTime = datetime('now');%get current datestamp
-                    currentTimeStr = datestr(currentTime, 'yyyy-mm-dd HH:MM:SS');  %convert to a string
-                
-                    newRow = {currentTimeStr, currentMeasurement};  %new row to add
+        % Callback for RecordMeasurementButton
+        function RecordMeasurementButtonPushed(app, ~)
+            currentMeasurement = app.RollingAverage;
+            if ~isnan(currentMeasurement)
+                currentTime = datetime('now');%get current datestamp
+                currentTimeStr = datestr(currentTime, 'yyyy-mm-dd HH:MM:SS');  %convert to a string
+            
+                newRow = {currentTimeStr, currentMeasurement};  %new row to add
 
-                    app.RecordingsTable.Data = [app.RecordingsTable.Data; newRow];  %append to existing table
-                else
-                    uialert(app.UIFigure, 'Measurement is invalid (NaN).', 'Recording Error');
-                end
+                app.RecordingsTable.Data = [app.RecordingsTable.Data; newRow];  %append to existing table
+            else
+                uialert(app.UIFigure, 'Measurement is invalid (NaN).', 'Recording Error');
             end
+        end
 
-            % Callback for ClearMeasurementButton
-            function ClearMeasurementButtonPushed(app, ~)
-                app.RecordingsTable.Data = {};       
-            end
+        % Callback for ClearMeasurementButton
+        function ClearMeasurementButtonPushed(app, ~)
+            app.RecordingsTable.Data = {};       
+        end
 
-            %callback for SaveMeasurementButton
-            function SaveMeasurementButtonPushed(app, ~)
-                tableData = app.RecordingsTable.Data;
-                if ~isempty(tableData)
-       
-                    [fileName, filePath] = uiputfile('*.csv', 'Save Table as CSV');
-                    fullFilePath = [filePath, fileName];
-                    if isequal(fileName, 0)
-                        return;
-                    else
-                        try
-                            tableData(:, 1) = cellfun(@string, tableData(:, 1), 'UniformOutput', false);  %timestamps are string
-                            tableData(:, 2) = cellfun(@double, tableData(:, 2), 'UniformOutput', false);  %distances are numeric
-                            
-                           %create table
-                            T = cell2table(tableData, 'VariableNames', {'Timestamp', 'Distance(m)'});
-                            
-                            % write table
-                            writetable(T, fullFilePath);
-                            
-                            %show success message
-                            uialert(app.UIFigure, 'Table data saved successfully!', 'Save Complete');
-                        catch ME
-                            %error message
-                            uialert(app.UIFigure, ['Failed to save file: ', ME.message], 'Save Error');
-                        end
-                    end
-                else
-                    %handles if table is empty
-                    uialert(app.UIFigure, 'No data to save. The table is empty.', 'Save Error');
-                end
-            end
-        
-            function AlarmSwitchValueChanged(app, ~) 
-                app.IsAlarm = app.AlarmSwitch.Value; 
-            end
-
-            function buttonToRecordValueChanged(app, ~)
-                app.buttonToRecordState = app.buttonToRecord.Value; 
-            end
-
-            function requireDarkValueChanged(app, ~)
-                app.requireDarkState = app.requiredarkSwitch.Value; 
-            end
+        %callback for SaveMeasurementButton
+        function SaveMeasurementButtonPushed(app, ~)
+            tableData = app.RecordingsTable.Data;
+            if ~isempty(tableData)
    
+                [fileName, filePath] = uiputfile('*.csv', 'Save Table as CSV');
+                fullFilePath = [filePath, fileName];
+                if isequal(fileName, 0)
+                    return;
+                else
+                    try
+                        tableData(:, 1) = cellfun(@string, tableData(:, 1), 'UniformOutput', false);  %timestamps are string
+                        tableData(:, 2) = cellfun(@double, tableData(:, 2), 'UniformOutput', false);  %distances are numeric
+                        
+                       %create table
+                        T = cell2table(tableData, 'VariableNames', {'Timestamp', 'Distance(m)'});
+                        
+                        % write table
+                        writetable(T, fullFilePath);
+                        
+                        %show success message
+                        uialert(app.UIFigure, 'Table data saved successfully!', 'Save Complete');
+                    catch ME
+                        %error message
+                        uialert(app.UIFigure, ['Failed to save file: ', ME.message], 'Save Error');
+                    end
+                end
+            else
+                %handles if table is empty
+                uialert(app.UIFigure, 'No data to save. The table is empty.', 'Save Error');
+            end
+        end
+    
+        function AlarmSwitchValueChanged(app, ~) 
+            app.IsAlarm = app.AlarmSwitch.Value; 
+        end
+
+        function buttonToRecordValueChanged(app, ~)
+            app.buttonToRecordState = app.buttonToRecord.Value; 
+        end
+
+        function requireDarkValueChanged(app, ~)
+            app.requireDarkState = app.requiredarkSwitch.Value; 
+        end
+
         function createComponents(app)
 
             % Create UIFigure and hide until all components are created
