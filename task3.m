@@ -255,7 +255,7 @@ classdef task3 < matlab.apps.AppBase
                 end
 
                 %if the button is being used then use logic to check for
-                %presses
+                %the button being pressed
                 if buttonToRecordState == "On"
                     buttonCheckElapsed = toc(buttonCheckTimer);
                     if buttonCheckElapsed >= buttonCheckPeriod && toc(buttonCooldown) >= 0.75
