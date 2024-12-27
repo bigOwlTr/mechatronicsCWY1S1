@@ -24,7 +24,7 @@ classdef task3 < matlab.apps.AppBase
         UIAxes                          matlab.ui.control.UIAxes
         RightPanel                      matlab.ui.container.Panel
         requiredarkSwitch               matlab.ui.control.Switch
-        requiredarkSwitchLabel                    matlab.ui.control.Label
+        requiredarkSwitchLabel          matlab.ui.control.Label
         AlarmSwitch                     matlab.ui.control.Switch
         AlarmSwitchLabel                matlab.ui.control.Label
         buttonToRecord                  matlab.ui.control.Switch
@@ -35,177 +35,227 @@ classdef task3 < matlab.apps.AppBase
 
     % Properties that correspond to apps with auto-reflow
     properties (Access = private)
-        onePanelWidth = 576;
-        twoPanelWidth = 768;
-        DataQueue;                  % queu for parallel communication
-        MeasurementLoop;
+        onePanelWidth = 576;        %setting side panel widths for the gui
+        twoPanelWidth = 768;        %setting main panel width for the gui
+        DataQueue;                  %dataqueue for worker communication
+        ArduinoWorker;              %to store the arduino worker
         IsMeasuring = false;        %measurement status flag            
-        MeasurementBuffer = [];     %creates the rolling buffer
-        BufferSize = 0;
+        MeasurementBuffer = [];     %creates the rolling buffer array
+        BufferSize = 0;             %initialises the buffer size as 0
         RollingAverage  = 0;        %initialises the rolling avg as 0
         callibrationFactor = 1/0.99016;       %callibration factor
-        callibrationOffset = 3.9611/1000;     %callibration offset converted back to mm 
-        InputUpdateTimer            %timer to check for input changes
-        CurrentFrequency = 0;      %store prev freq
-        IsAlarm = 'Off';
-        buttonToRecordState = 'Off';
-        requireDarkState = 'Off';
-
-
+        callibrationOffset = 3.9611/1000;     %callibration offset in m
+        CurrentFrequency = 0;       %initialises current frequency as 0
+        IsAlarm = 'Off';            %alarm switch status flag
+        buttonToRecordState = 'Off';%button to record switch status flag
+        requireDarkState = 'Off';   %require dark switch status flag
     end
    
 
     % Callbacks that handle component events
     methods (Access = private)
-        function startMeasurements(app)
+
+        function startMeasurements(app) %function to begin measurements
+
             try
-                if app.IsMeasuring
+
+                if app.IsMeasuring      %check if measurments are on
                     disp('Measurements already running.');
-                    return;
+                    return;             %if they are disp msg and return
                 end
-                
-                app.DataQueue = parallel.pool.DataQueue;
+
+                %setup dataqueue for communication
+                app.DataQueue = parallel.pool.DataQueue; 
+                %callback to monitor data queue and send to plotting
                 afterEach(app.DataQueue, @(data)updatePlotCallback(app, data));
-        
+                %read off frequency from ui
                 frequency = app.TargetFrequencyEditField.Value;
-                if frequency <= 0
-                    uialert(app.UIFigure, 'Frequency must be greater than 0.', 'Invalid input');
-                    return;
+
+                if frequency <= 0   %check for valid frequency
+                    uialert(app.UIFigure, ...
+                        'Frequency must be greater than 0.', 'Invalid input');
+                    return;         %disp msg and return for invalid frequency
                 end
         
+                %check for worker pool or create one
                 if isempty(gcp('nocreate'))
-                    % If no pool is running, create a new pool with 1 worker
+                    %if no pool is running, create a new pool with 1 worker
                     parpool(1);
                     disp('Parallel pool started with 1 worker.');
                 else
                     disp('Parallel pool is already running.');
                 end
 
-
+                %set the measuring flag to true
                 app.IsMeasuring = true;
+                %set current frequency to target frequency for initialising
                 app.CurrentFrequency = frequency;
-                disp(['Starting measurement loop with frequency: ', num2str(frequency)]);
-
-                disp(app.IsAlarm)
-                disp(app.requireDarkState)
-                app.MeasurementLoop = parfeval(@app.measurementLoop, 0, app.DataQueue, frequency, app.IsAlarm, app.AlarmThresholdEditField.Value, app.buttonToRecordState, app.requireDarkState);
+                %disp initialising msg and the frequency target
+                disp(['Starting measurement loop with frequency: ', ...
+                    num2str(frequency)]);   
                 
+                %begin the parallel worker task and pass in all required
+                %variables for it
+                app.ArduinoWorker = parfeval(@app.arduinoWorker, 0, ...
+                    app.DataQueue, frequency, app.IsAlarm, ...
+                    app.AlarmThresholdEditField.Value, app.buttonToRecordState, ...
+                    app.requireDarkState);
+                
+                %another message for after the worker is initialised
                 disp('Measurement task started.');
                 
-            catch exception
-                app.IsMeasuring = false;
-                uialert(app.UIFigure, ['Error: ', exception.message], 'Measurement Error');
+            catch exception %catch and exceptions to the startup
+                app.IsMeasuring = false;    %reset flag
+                uialert(app.UIFigure, ['Error: ', exception.message], ...
+                    'Measurement Error');   %exception msg
             end
+
         end
 
 
         function stopMeasurements(app)      %function to stop measuring
 
-            app.IsMeasuring = false;        %sets the ismeasuring flag to false
+            app.IsMeasuring = false;    %sets the ismeasuring flag to false
 
-            if ~isempty(app.MeasurementLoop)    %cancel the parallel task if running
-                cancel(app.MeasurementLoop);
-                app.MeasurementLoop = [];
+            if ~isempty(app.ArduinoWorker) %cancel the parallel task if running
+                cancel(app.ArduinoWorker);
+                app.ArduinoWorker = [];
                 disp('Measurement task stopped.');
             end
-        end
 
+        end
     
-      function updatePlotCallback(app, data)    
-            app.CurrentFrequencyEditField.Value = 1 / data(1);  % Update frequency
-            app.updateBuffer(data(2)); 
-            if data(3) == true
+        function updatePlotCallback(app, data)    %plotting and gui updates
+            %update the frequency from the measurement period
+            app.CurrentFrequencyEditField.Value = 1 / data(1);
+            app.updateBuffer(data(2));  %send distance to the buffer function
+
+            if data(3) == true  %check if record measurement button pressed
+                %if so use record measuremnt button callback
                 app.RecordMeasurementButtonPushed()
             end
             
-            
-            if isempty(app.UIAxes.Children)
+            if isempty(app.UIAxes.Children) %check if axis empty
+                %initialise line and plot
                 lineAvg = plot(app.UIAxes, 0, app.RollingAverage, '-');
                 app.UIAxes.XLim = [0, 5 * app.CurrentFrequency]; 
                 app.UIAxes.YLimMode = 'auto';
                 app.UIAxes.XLimMode = 'manual'; 
             else
-       
+                %update line and plot if already existing by appending
                 lineAvg = app.UIAxes.Children(1); 
                 newX = lineAvg.XData(end) + 1; 
                 lineAvg.XData = [lineAvg.XData newX];
                 lineAvg.YData = [lineAvg.YData app.RollingAverage]; 
-        
-              
+                
+                %if new data is outside xlim then update xlim for scrolling
                 if newX > app.UIAxes.XLim(2)
+                    %set up scrolling for 5 sec scroll time
                     newXLimStart = newX - 5 * app.CurrentFrequency;
                     newXLimEnd = newX;
                     
-               
+                    %if new limits are valid then update them
                     if ~isnan(newXLimStart) && isfinite(newXLimStart)
                         app.UIAxes.XLim = [newXLimStart, newXLimEnd];
-                    else
-                    
-                        app.UIAxes.XLim = [0, 5 * app.CurrentFrequency];
+                    else    %else just return without updating
+                        return;
                     end
+
                 end
+
+                %update the ylim based on current data
+                %set as 50 percent above and below rounded to 2 sig fig
                 ylimMin = round(app.RollingAverage*0.5, 2, "significant");
                 ylimMax = round(app.RollingAverage*1.5, 2, "significant");
+                %set ylim as new ones we just calculated
                 app.UIAxes.YLim=[ylimMin ylimMax];
+                %specify manual ylim
                 app.UIAxes.YLimMode = 'manual';
+                %turn on axis grids for readability
                 app.UIAxes.YGrid = 'on';
             end
+
         end
         
-        function updateBuffer(app, newReading)     % Updates the rolling buffer
-            % Add the current reading to the buffer
-            app.MeasurementBuffer = [app.MeasurementBuffer, newReading];   
+        function updateBuffer(app, newReading)  %updates the rolling buffer
+            %add the new/current reading to the buffer
+            app.MeasurementBuffer = [app.MeasurementBuffer, newReading];  
+            %define the buffer size as specified in the gui
             app.BufferSize = app.RollingAverageEditField.Value;
             
-            % If the buffer exceeds the specified size, trim it
+            %if buffer exceeds specified size trim it
             if length(app.MeasurementBuffer) > app.BufferSize
-                app.MeasurementBuffer = app.MeasurementBuffer(end - app.BufferSize + 1:end);  % Trim the buffer
+                app.MeasurementBuffer = app.MeasurementBuffer(end - ...
+                    app.BufferSize + 1:end);  %trim the buffer to size
             end
             
-            % Calculate and update the rolling average
+            %calculate and update rolling average
             app.RollingAverage = mean(app.MeasurementBuffer);
+            %draw the new rolling average to the gui
             app.RollingAvgValueEditField.Value = app.RollingAverage;
-
-          
+         
         end
 
-
-        %the parallel measurement loop
-        function measurementLoop(~, dataQueue, frequency, IsAlarm, AlarmThresholdEditFieldValue, buttonToRecordState, requireDarkState)
-            alarmThreshold = AlarmThresholdEditFieldValue;   % Alarm threshold set by the user
-            arduinoObj = arduino('COM3', 'Uno', 'Libraries', 'Ultrasonic');  % Arduino setup
-            ultrasonicObj = ultrasonic(arduinoObj, 'D11', 'D12');  % Ultrasonic sensor setup
+        %the parallel arduino loop
+        function arduinoWorker(~, dataQueue, frequency, IsAlarm, ...
+                AlarmThresholdEditFieldValue, buttonToRecordState, ...
+                requireDarkState)
+            %alarm threshold as set in gui
+            alarmThreshold = AlarmThresholdEditFieldValue;   
+            %initialise arduino connection
+            arduinoObj = arduino('COM3', 'Uno', 'Libraries', 'Ultrasonic'); 
+            %set up for ultrasonic sensor
+            ultrasonicObj = ultrasonic(arduinoObj, 'D11', 'D12');  
+            %start the timer for measurement period calculation
             measurementTimerStart = tic;  
+            %start timer for alarm non-blocking timing
             alarmTimerStart = tic;  
-            alarmMaxRatio = alarmThreshold / 0.02;  
+            %ratio between alarm threshold and min recordable distance
+            alarmMaxRatio = alarmThreshold / 0.1;  
+            %initialise current distance as 0
             currentDistance = 0;
+            %how often to check if the digital button is pressed
             buttonCheckPeriod = 0.1;
+            %start timer for button checking
             buttonCheckTimer = tic;
+            %start timer for the button press cooldown period
             buttonCooldown = tic;
+            %read initial photodiode voltage
             photoDiodeVoltage = readVoltage(arduinoObj, 'A2');
+            %set led status flag to off
             ledOnState = false;
 
-
-            while true    
+            while true  %loop that will always cycle so long as worker runs 
+                %work out elapsed time since last measurement each cycle
                 elapsedMeasurementTime = toc(measurementTimerStart);
 
+                %if elapsed time is over measurement period
                 if elapsedMeasurementTime >= 1 / frequency
+                    %restart the measurement timer
                     measurementTimerStart = tic; 
 
-                    try
+                    try     %try to read current distance from sensor
                         currentDistance = readDistance(ultrasonicObj);
-                    catch exception
+                    catch exception %catch just writes distance as NaN
                         currentDistance = NaN; 
                     end
 
-                    if currentDistance >= 0.02 && currentDistance <= 2
-                        send(dataQueue, [elapsedMeasurementTime, currentDistance, false]);  
-                    else
+                    %check if distance is within bounds
+                    if currentDistance >= 0.1 && currentDistance <= 2
+                        send(dataQueue, [elapsedMeasurementTime, ...
+                            currentDistance, false]);  
+                    %if beyond bounds set as NaN
+                    elseif currentDistance >= 2
                         send(dataQueue, [elapsedMeasurementTime, NaN, false]); 
+                    %if within set as 0 to ensure alarm logic functions
+                    else 
+                        send(dataQueue, [elapsedMeasurementTime, 0, false]); 
                     end
+
                 end
 
-
+                %if the button is being used then use logic to check for
+                %presses
                 if buttonToRecordState == "On"
                     buttonCheckElapsed = toc(buttonCheckTimer);
                     if buttonCheckElapsed >= buttonCheckPeriod && toc(buttonCooldown) >= 0.75
@@ -256,10 +306,6 @@ classdef task3 < matlab.apps.AppBase
         end
 
 
-
-      
-
-
         % Changes arrangement of the app based on UIFigure width
         function updateAppLayout(app, ~)
             currentFigureWidth = app.UIFigure.Position(3);
@@ -300,81 +346,81 @@ classdef task3 < matlab.apps.AppBase
     % Component initialization
     methods (Access = private)
 
-            % Callback for StartButton
-            function StartButtonPushed(app, ~)
-                app.startMeasurements();  % Starts the measurement process
-            end
+        % Callback for StartButton
+        function StartButtonPushed(app, ~)
+            app.startMeasurements();  % Starts the measurement process
+        end
 
-            % Callback for StopButton
-            function StopButtonPushed(app, ~)
-                app.stopMeasurements();  % Stops the measurement process
-            end
+        % Callback for StopButton
+        function StopButtonPushed(app, ~)
+            app.stopMeasurements();  % Stops the measurement process
+        end
 
-            % Callback for RecordMeasurementButton
-            function RecordMeasurementButtonPushed(app, ~)
-                currentMeasurement = app.RollingAverage;
-                if ~isnan(currentMeasurement)
-                    currentTime = datetime('now');%get current datestamp
-                    currentTimeStr = datestr(currentTime, 'yyyy-mm-dd HH:MM:SS');  %convert to a string
-                
-                    newRow = {currentTimeStr, currentMeasurement};  %new row to add
+        % Callback for RecordMeasurementButton
+        function RecordMeasurementButtonPushed(app, ~)
+            currentMeasurement = app.RollingAverage;
+            if ~isnan(currentMeasurement)
+                currentTime = datetime('now');%get current datestamp
+                currentTimeStr = datestr(currentTime, 'yyyy-mm-dd HH:MM:SS');  %convert to a string
+            
+                newRow = {currentTimeStr, currentMeasurement};  %new row to add
 
-                    app.RecordingsTable.Data = [app.RecordingsTable.Data; newRow];  %append to existing table
-                else
-                    uialert(app.UIFigure, 'Measurement is invalid (NaN).', 'Recording Error');
-                end
+                app.RecordingsTable.Data = [app.RecordingsTable.Data; newRow];  %append to existing table
+            else
+                uialert(app.UIFigure, 'Measurement is invalid (NaN).', 'Recording Error');
             end
+        end
 
-            % Callback for ClearMeasurementButton
-            function ClearMeasurementButtonPushed(app, ~)
-                app.RecordingsTable.Data = {};       
-            end
+        % Callback for ClearMeasurementButton
+        function ClearMeasurementButtonPushed(app, ~)
+            app.RecordingsTable.Data = {};       
+        end
 
-            %callback for SaveMeasurementButton
-            function SaveMeasurementButtonPushed(app, ~)
-                tableData = app.RecordingsTable.Data;
-                if ~isempty(tableData)
-       
-                    [fileName, filePath] = uiputfile('*.csv', 'Save Table as CSV');
-                    fullFilePath = [filePath, fileName];
-                    if isequal(fileName, 0)
-                        return;
-                    else
-                        try
-                            tableData(:, 1) = cellfun(@string, tableData(:, 1), 'UniformOutput', false);  %timestamps are string
-                            tableData(:, 2) = cellfun(@double, tableData(:, 2), 'UniformOutput', false);  %distances are numeric
-                            
-                           %create table
-                            T = cell2table(tableData, 'VariableNames', {'Timestamp', 'Distance(m)'});
-                            
-                            % write table
-                            writetable(T, fullFilePath);
-                            
-                            %show success message
-                            uialert(app.UIFigure, 'Table data saved successfully!', 'Save Complete');
-                        catch ME
-                            %error message
-                            uialert(app.UIFigure, ['Failed to save file: ', ME.message], 'Save Error');
-                        end
-                    end
-                else
-                    %handles if table is empty
-                    uialert(app.UIFigure, 'No data to save. The table is empty.', 'Save Error');
-                end
-            end
-        
-            function AlarmSwitchValueChanged(app, ~) 
-                app.IsAlarm = app.AlarmSwitch.Value; 
-            end
-
-            function buttonToRecordValueChanged(app, ~)
-                app.buttonToRecordState = app.buttonToRecord.Value; 
-            end
-
-            function requireDarkValueChanged(app, ~)
-                app.requireDarkState = app.requiredarkSwitch.Value; 
-            end
+        %callback for SaveMeasurementButton
+        function SaveMeasurementButtonPushed(app, ~)
+            tableData = app.RecordingsTable.Data;
+            if ~isempty(tableData)
    
+                [fileName, filePath] = uiputfile('*.csv', 'Save Table as CSV');
+                fullFilePath = [filePath, fileName];
+                if isequal(fileName, 0)
+                    return;
+                else
+                    try
+                        tableData(:, 1) = cellfun(@string, tableData(:, 1), 'UniformOutput', false);  %timestamps are string
+                        tableData(:, 2) = cellfun(@double, tableData(:, 2), 'UniformOutput', false);  %distances are numeric
+                        
+                       %create table
+                        T = cell2table(tableData, 'VariableNames', {'Timestamp', 'Distance(m)'});
+                        
+                        % write table
+                        writetable(T, fullFilePath);
+                        
+                        %show success message
+                        uialert(app.UIFigure, 'Table data saved successfully!', 'Save Complete');
+                    catch ME
+                        %error message
+                        uialert(app.UIFigure, ['Failed to save file: ', ME.message], 'Save Error');
+                    end
+                end
+            else
+                %handles if table is empty
+                uialert(app.UIFigure, 'No data to save. The table is empty.', 'Save Error');
+            end
+        end
+    
+        function AlarmSwitchValueChanged(app, ~) 
+            app.IsAlarm = app.AlarmSwitch.Value; 
+        end
+
+        function buttonToRecordValueChanged(app, ~)
+            app.buttonToRecordState = app.buttonToRecord.Value; 
+        end
+
+        function requireDarkValueChanged(app, ~)
+            app.requireDarkState = app.requiredarkSwitch.Value; 
+        end
+
         function createComponents(app)
 
             % Create UIFigure and hide until all components are created
