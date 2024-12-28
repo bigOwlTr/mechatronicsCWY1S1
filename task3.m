@@ -278,7 +278,7 @@ classdef task3 < matlab.apps.AppBase
                     end
                 end
 
-                %if alarm state is on and distance is within alarm thresold
+                %if alarm state is on and distance is within alarm threshold
                 if IsAlarm == "On"  && currentDistance <= alarmThreshold
                     %if required dark is off or it is infact dark
                     if requireDarkState == "Off" || photoDiodeVoltage<=0.36
