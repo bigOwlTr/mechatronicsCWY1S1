@@ -1,75 +1,95 @@
-clear;close all;clc;        %Clearing the workspace and any windows
+clear;close all;clc;       %clearing the workspace and any windows
 
-distanceMin = 0.1;         %Measurement range
+distanceMin = 0.1;         %measurement range after callibration
 distanceMax = 2;
 
-callibrationGradient = 0.99016;       %callibration gradient
-callibrationFactor = 1/0.99016;       %callibration factor
-callibrationOffset = 3.9611/1000;     %callibration offset converted back to mm 
+callibrationGradient = 0.99016;    %callibration gradient
+callibrationFactor = 1/0.99016;    %callibration factor
+callibrationOffset = 3.9611/1000;  %callibration offset converted back to m 
 
-debug = 0;                  %set to 1 for debug console values
+debug = 0;                         %set to 1 for debug console values
 
-frequency = 24;
-period = 1/frequency;       %Specify measurement details  
-duration = 10;
-windowSize = 25;            %Window size for the rolling average applied to the data
+frequency = 24;             %target frequency
+period = 1/frequency;       %convert frequency to period
+duration = 10;              %measurement duration in seconds
+windowSize = 25;            %rolling avg window size
 
-totalMeasurements = frequency*duration; %number of measurements to be taken
+%total number of measurements so table size can be pre-allocated
+totalMeasurements = frequency*duration;
 
-distanceTable = table(NaN(totalMeasurements,1),NaN(totalMeasurements,1),NaN(totalMeasurements,1),NaN(totalMeasurements,1),'VariableNames',...
-    {'Time','Distance','RollingAvg','LoopIterationTime'}); %Initialising table with timestamps prefilled
+%initialise the table with column names and totalMeasurements length
+distanceTable = table(NaN(totalMeasurements,1),NaN(totalMeasurements,1), ...
+    NaN(totalMeasurements,1),NaN(totalMeasurements,1),'VariableNames',...
+    {'Time','Distance','RollingAvg','LoopIterationTime'});
 
+%set up the arduino connection with ultrasound library
+arduinoObj = arduino('COM3','Uno',"Libraries","Ultrasonic");  
+%set up ultrasound library
+ultrasonicObj = ultrasonic(arduinoObj,'D11','D12');             
 
-arduinoObj = arduino('COM3','Uno',"Libraries","Ultrasonic");    %Creating the arduino connection with the ultrasound library
-ultrasonicObj = ultrasonic(arduinoObj,'D11','D12');             %Creating the sensor connection
-
-figure; % Initialize the plot
+figure;     %initialise plot
 hold on;
-distPlot = plot(NaN,NaN,'b','DisplayName','Raw Data');          % empty plot for raw distance
-ravgPlot = plot(NaN,NaN,'r','DisplayName','Rolling Average');   % empty plot for rolling average
-legend('show');
-xlabel('Time [s]');
+%initialise empty plot for raw data and rolling avg
+distPlot = plot(NaN,NaN,'b','DisplayName','Raw Data');         
+ravgPlot = plot(NaN,NaN,'r','DisplayName','Rolling Average');   
+legend('show');           %show legend 
+xlabel('Time [s]');       %axis labels
 ylabel('Distance [m]');
 
-
-pause(1)  %calling pause first time outside main loop to prevent initialisation lag of 0.1s
+%calling pause first time outside loop to prevent initialisation lag of 0.1s
+pause(1)  
 
 tic     %starts timer
-for i =1:totalMeasurements              %starts for loop for until every planned meaurement is taken
 
+%starts for loop until every planned meaurement is taken
+for i = 1:totalMeasurements              
+    %time measurement should be taken based off index and frequency
     targetStart = i*(period);
+    %how long the pause needs to be until that target time
+    pauseTime = targetStart - toc;  
+    %do the pause time to reach targetTime
+    pause(pauseTime);                  
 
-    pauseTime = targetStart - toc;      %how long the pause needs to be until that target time
-    pause(pauseTime);                   %doing the pause time to reach targetTime
+    timeBefore = toc;   %time just before distance is measured
+    currentDistance = callibrationFactor*readDistance(ultrasonicObj)...
+    -callibrationOffset;  %current distance measurement
+    timeAfter = toc;    %time after distance is measured
 
-    timeBefore = toc;                               %time just before distance is measured
-    currentDistance = callibrationFactor*readDistance(ultrasonicObj)-callibrationOffset;  %current distance measurement
-    timeAfter = toc;                                %time after distance is measured
-
-    if currentDistance >= distanceMin && currentDistance <= distanceMax     %writes the current distance if within the measurement range
+    %writes the current distance if within the measurement range
+    if currentDistance >= distanceMin && currentDistance <= distanceMax     
         distanceTable.Distance(i) = currentDistance;
-    else
-        distanceTable.Distance(i) = NaN;                                    %writes not a number if outside range
+    else   %writes not a number if outside range
+        distanceTable.Distance(i) = NaN;  
     end
-  
-    distanceTable.Time(i) = timeAfter;                                %writes the time immediately after the measurement is made to the table
+    
+    %writes the time immediately after the measurement is made to the table
+    distanceTable.Time(i) = timeAfter;                                
 
-    if i >= windowSize                                                %prevents rolling average being calculated until sufficient data points known
-        rollingAvg = mean(distanceTable.Distance(i-windowSize+1:i));  %calculates the rolling avg and writes it to the table
-    else 
+    %if enough data to calculate rolling avg
+    if i >= windowSize   
+        %calculate rolling avg based on window size and distance
+        rollingAvg = mean(distanceTable.Distance(i-windowSize+1:i));  
+    else%if not enough data points write NaN
         rollingAvg = nan;
     end
+
+    %add the rolling avg to the distanceTable
     distanceTable.RollingAvg(i)= rollingAvg;
 
-    set(distPlot,'XData',distanceTable.Time(1:i),'YData',distanceTable.Distance(1:i));      %update distance plot
-    set(ravgPlot,'XData',distanceTable.Time(1:i),'YData',distanceTable.RollingAvg(1:i));    %update rolling average plot
-    drawnow;
+    %update update raw data and rolling avg plots with new data
+    set(distPlot,'XData',distanceTable.Time(1:i),'YData', ...
+        distanceTable.Distance(1:i));      
+    set(ravgPlot,'XData',distanceTable.Time(1:i),'YData', ...
+        distanceTable.RollingAvg(1:i));   
+    drawnow;  %force it to draw now
     
-
+    %diagnostic output to console with live data and times
     if debug == 1
-        disp(['Target Start: ',num2str(targetStart,'%5f'), ' Measurement start deviation: ', num2str(timeBefore-targetStart,'%5f'), ' Measurement duration: ',...
-            num2str(timeAfter-timeBefore,'%5f'), ' End of loop:',num2str(toc, '%5f'), ' Distance: ',num2str(currentDistance, '%5f')]); %diagnostic display output to console
+        disp(['Target Start: ',num2str(targetStart,'%5f'), ' Measurement'...
+            ' start deviation: ', num2str(timeBefore-targetStart,'%5f'), ...
+            ' Measurement duration: ',num2str(timeAfter-timeBefore, ...
+            '%5f'), ' End of loop:',num2str(toc, '%5f'), ' Distance: ', ...
+            num2str(currentDistance, '%5f')]); 
     end
-    
 end
 
