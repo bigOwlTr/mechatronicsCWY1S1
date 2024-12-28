@@ -104,7 +104,7 @@ classdef task3 < matlab.apps.AppBase
                 %another message for after the worker is initialised
                 disp('Measurement task started.');
                 
-            catch exception %catch and exceptions to the startup
+            catch exception %catch exceptions to the startup
                 app.IsMeasuring = false;    %reset flag
                 uialert(app.UIFigure, ['Error: ', exception.message], ...
                     'Measurement Error');   %exception msg
@@ -135,7 +135,7 @@ classdef task3 < matlab.apps.AppBase
             
             if isempty(app.UIAxes.Children) %check if axis empty
                 %initialise line and plot
-                lineAvg = plot(app.UIAxes, 0, app.RollingAverage, '-');
+                plot(app.UIAxes, 0, app.RollingAverage, '-');
                 app.UIAxes.XLim = [0, 5 * app.CurrentFrequency]; 
                 app.UIAxes.YLimMode = 'auto';
                 app.UIAxes.XLimMode = 'manual'; 
@@ -326,10 +326,10 @@ classdef task3 < matlab.apps.AppBase
 
         %function to record measurement to a table
         function recordMeasurment(app, ~)
-                if ~isnan(currentMeasurement)   %if data is not NaN
+                if ~isnan(app.RollingAverage)   %if data is not NaN
                     currentTime = datetime('now'); %get current datestamp
-                    currentTimeStr = datestr(currentTime, ...
-                        'yyyy-mm-dd HH:MM:SS');  %convert to a string
+                    currentTimeStr = char(currentTime, ...
+                        'dd-MM-yyyy HH:mm:ss');  %convert to a string
                     %create new row to be added
                     newRow = {currentTimeStr, app.RollingAverage}; 
                     %append to existing table
