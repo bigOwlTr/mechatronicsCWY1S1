@@ -499,7 +499,7 @@ classdef task3 < matlab.apps.AppBase
             % Create GridLayout2
             app.GridLayout2 = uigridlayout(app.LeftPanel);
             app.GridLayout2.ColumnWidth = {'fit', 'fit'};
-            app.GridLayout2.RowHeight = {'1x', 22.03, '1x', '1x', '1x', 
+            app.GridLayout2.RowHeight = {'1x', 22.03, '1x', '1x', '1x', ...
                 '1x', '1x', '1x', '1x', '1x', '1x', 'fit'};
 
             % Create TargetFrequencyEditFieldLabel
@@ -615,21 +615,21 @@ classdef task3 < matlab.apps.AppBase
             app.RecordMeasurementButton = uibutton(app.CenterPanel, 'push');
             app.RecordMeasurementButton.Position = [15 460 125 30];
             app.RecordMeasurementButton.Text = 'Record Measurement';
-            app.RecordMeasurementButton.ButtonPushedFcn = 
+            app.RecordMeasurementButton.ButtonPushedFcn = ...
             createCallbackFcn(app, @RecordMeasurementButtonPushed, true);
 
              % Create ClearMeasurementButton
             app.ClearMeasurementButton = uibutton(app.CenterPanel, 'push');
             app.ClearMeasurementButton.Position = [15 415 125 30];
             app.ClearMeasurementButton.Text = 'Clear Measurements';
-            app.ClearMeasurementButton.ButtonPushedFcn = 
+            app.ClearMeasurementButton.ButtonPushedFcn = ...
             createCallbackFcn(app, @ClearMeasurementButtonPushed, true);
 
               % Create SaveMeasurementButton
             app.SaveMeasurementButton = uibutton(app.CenterPanel, 'push');
             app.SaveMeasurementButton.Position = [15 370 125 30];
             app.SaveMeasurementButton.Text = 'Save Measurements';
-            app.SaveMeasurementButton.ButtonPushedFcn = 
+            app.SaveMeasurementButton.ButtonPushedFcn = ...
             createCallbackFcn(app, @SaveMeasurementButtonPushed, true);
 
 
@@ -647,7 +647,7 @@ classdef task3 < matlab.apps.AppBase
             % Create buttonToRecord
             app.buttonToRecord = uiswitch(app.RightPanel, 'slider');
             app.buttonToRecord.Position = [130 415 45 20];
-            app.buttonToRecord.ValueChangedFcn = 
+            app.buttonToRecord.ValueChangedFcn = ...
             createCallbackFcn(app, @buttonToRecordValueChanged, true);
 
             % Create AlarmSwitchLabel
@@ -659,7 +659,7 @@ classdef task3 < matlab.apps.AppBase
             % Create AlarmSwitch
             app.AlarmSwitch = uiswitch(app.RightPanel, 'slider');
             app.AlarmSwitch.Position = [30 415 45 20];
-            app.AlarmSwitch.ValueChangedFcn = 
+            app.AlarmSwitch.ValueChangedFcn = ...
             createCallbackFcn(app, @AlarmSwitchValueChanged, true);
 
             % Create requiredarkSwitchLabel
@@ -672,7 +672,7 @@ classdef task3 < matlab.apps.AppBase
             % Create requiredarkSwitch
             app.requiredarkSwitch = uiswitch(app.RightPanel, 'slider');
             app.requiredarkSwitch.Position = [29 319 45 20];
-            app.requiredarkSwitch.ValueChangedFcn = 
+            app.requiredarkSwitch.ValueChangedFcn = ...
             createCallbackFcn(app, @requireDarkValueChanged, true);
 
             % Show the figure after all components are created
