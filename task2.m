@@ -12,10 +12,11 @@ hold on;
 yyaxis left %plotting graph for left yaxis
 ylim ([0, 1.5]);  %set left ylim
 %left yaxis label
-ylabel('Average Distance Recorded (m)', 'Color', 'b', 'FontSize', 14); 
+ylabel('Average Distance Recorded (m)', 'Color', 'b', 'FontSize', 16); 
 xlim ([-11,11])          %set the xlim for the graph
 grid on;
-set(gca, 'FontSize', 12, 'GridLineWidth', 1);   %tick size and grid lines
+set(gca, 'GridLineStyle', '-', 'GridAlpha', 0.1, 'LineWidth', 1.5);
+set(gca, 'FontSize', 12);   %tick size 
 
 x = 1:240;  %x values for all measurements
 for i =startValue:endValue  %for each distance from centre
@@ -46,9 +47,9 @@ end
 %set yaxis for plotting the right
 yyaxis right
 ylim ([-0.0005, 0.0005]);  %set right ylim
-xlabel('Edge Position from Centre Line');       %xaxis label
+xlabel('Edge Position from Centre Line','FontSize',16);       %xaxis label
 %right yaxis label
-ylabel('Standard Error (m)', 'Color', 'r', 'FontSize', 14);
+ylabel('Standard Error (m)', 'Color', 'r', 'FontSize', 16);
 
 for i =startValue:endValue  %for each distance from centre
     if i < 0    %for the negative distances
