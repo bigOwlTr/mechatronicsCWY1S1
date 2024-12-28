@@ -65,14 +65,16 @@ classdef task3 < matlab.apps.AppBase
                 %setup dataqueue for communication
                 app.DataQueue = parallel.pool.DataQueue; 
                 %callback to monitor data queue and send to plotting
-                afterEach(app.DataQueue, @(data)updatePlotCallback(app, data));
+                afterEach(app.DataQueue, @(data)updatePlotCallback(app, ...
+                    data));
                 %read off frequency from ui
                 frequency = app.TargetFrequencyEditField.Value;
 
                 if frequency <= 0   %check for valid frequency
                     uialert(app.UIFigure, ...
-                        'Frequency must be greater than 0.', 'Invalid input');
-                    return;         %disp msg and return for invalid frequency
+                        'Frequency must be greater than 0.', ...
+                        'Invalid input');
+                    return;      %disp msg and return for invalid frequency
                 end
         
                 %check for worker pool or create one
@@ -95,9 +97,9 @@ classdef task3 < matlab.apps.AppBase
                 %begin the parallel worker task and pass in all required
                 %variables for it
                 app.ArduinoWorker = parfeval(@app.arduinoWorker, 0, ...
-                    app.DataQueue, frequency, app.IsAlarm, ...
-                    app.AlarmThresholdEditField.Value, app.buttonToRecordState, ...
-                    app.requireDarkState);
+                    app.DataQueue, frequency, ...
+                    app.IsAlarm, app.AlarmThresholdEditField.Value, ...
+                    app.buttonToRecordState, app.requireDarkState);
                 
                 %another message for after the worker is initialised
                 disp('Measurement task started.');
@@ -116,7 +118,7 @@ classdef task3 < matlab.apps.AppBase
             if ~isempty(app.ArduinoWorker) %if worker is running
                 cancel(app.ArduinoWorker); %stop the worker
                 app.ArduinoWorker = [];
-                disp('Measurement task stopped.'); %disp msg that it stopped
+                disp('Measurement task stopped.'); %disp msg when stopped
             end
         end
     
@@ -124,7 +126,7 @@ classdef task3 < matlab.apps.AppBase
         function updatePlotCallback(app, data)    
             %update the frequency from the measurement period
             app.CurrentFrequencyEditField.Value = 1 / data(1);
-            app.updateBuffer(data(2));  %send distance to the buffer function
+            app.updateBuffer(data(2));  %send distance to buffer function
 
             if data(3) == true  %check if record measurement button pressed
                 %if so use record measuremnt button callback
@@ -241,7 +243,8 @@ classdef task3 < matlab.apps.AppBase
                             currentDistance, false]);  
                     elseif currentDistance >= 2
                         %if beyond bounds set as NaN
-                        send(dataQueue, [elapsedMeasurementTime, NaN, false]); 
+                        send(dataQueue, [elapsedMeasurementTime, ...
+                            NaN, false]); 
                     else 
                         %if within set as 0 to ensure alarm logic functions
                         send(dataQueue, [elapsedMeasurementTime, 0, false]); 
@@ -278,16 +281,16 @@ classdef task3 < matlab.apps.AppBase
                 %if alarm state is on and distance is within alarm thresold
                 if IsAlarm == "On"  && currentDistance <= alarmThreshold
                     %if required dark is off or it is infact dark
-                    if requireDarkState == "Off" || photoDiodeVoltage <= 0.36
+                    if requireDarkState == "Off" || photoDiodeVoltage<=0.36
                         %current ratio of distance to threshold
                         alarmRatio = alarmThreshold / currentDistance;
                         %ratio of that to the max possible ratio
                         distanceFactor = alarmRatio / alarmMaxRatio;
                         %read the potentiometer voltage
-                        potentiometerVoltage = readVoltage(arduinoObj, 'A3');
+                        potentiometerVoltage = readVoltage(arduinoObj,'A3');
                         %set alarm frequency based off distance factor and
                         %potentiometer
-                        alarmFreq =  100 * potentiometerVoltage * distanceFactor;
+                        alarmFreq = 100*potentiometerVoltage*distanceFactor;
                         %led on time based on alarm period
                         ledOnTime = 1 / alarmFreq;
                         %start timer for alarm logic
@@ -306,7 +309,7 @@ classdef task3 < matlab.apps.AppBase
                             %set flag as off
                             ledOnState = false;
                             %read photodiode voltage as led is off
-                            photoDiodeVoltage = readVoltage(arduinoObj, 'A2');
+                            photoDiodeVoltage=readVoltage(arduinoObj,'A2');
                             %start the alarm timer again
                             alarmTimerStart = tic;
                         end
@@ -330,10 +333,11 @@ classdef task3 < matlab.apps.AppBase
                     %create new row to be added
                     newRow = {currentTimeStr, app.RollingAverage}; 
                     %append to existing table
-                    app.RecordingsTable.Data = [app.RecordingsTable.Data; newRow];  
+                    app.RecordingsTable.Data = [app.RecordingsTable.Data; 
+                        newRow];  
                 else    %if data is NaN
-                    uialert(app.UIFigure, 'Measurement is invalid (NaN).',...
-                         'Recording Error');
+                    uialert(app.UIFigure, ['Measurement is invalid ' ...
+                        '(NaN).'],'Recording Error');
                 end
         end
 
@@ -351,10 +355,12 @@ classdef task3 < matlab.apps.AppBase
                     return; %if not then return
                 else    %if there is a file name
                     try
-                        tableData(:, 1) = cellfun(@string, tableData(:, 1), ...
-                            'UniformOutput', false);  %timestamps are string
-                        tableData(:, 2) = cellfun(@double, tableData(:, 2), ...
-                            'UniformOutput', false);  %distances are numeric
+                        %timestamps are string
+                        tableData(:, 1) = cellfun(@string, ...
+                            tableData(:, 1),'UniformOutput', false);
+                        %distances are numeric
+                        tableData(:, 2) = cellfun(@double, ...
+                            tableData(:, 2), 'UniformOutput', false);  
                         
                         %create table
                         T = cell2table(tableData, 'VariableNames', ...
@@ -365,7 +371,8 @@ classdef task3 < matlab.apps.AppBase
                         
                         %show success message
                         uialert(app.UIFigure, ...
-                            'Table data saved successfully!', 'Save Complete');
+                            'Table data saved successfully!', ...
+                            'Save Complete');
                     catch ME    %catch errors
                         %error message
                         uialert(app.UIFigure, ['Failed to save file: ', ...
@@ -392,7 +399,8 @@ classdef task3 < matlab.apps.AppBase
                 app.LeftPanel.Layout.Column = 1;
                 app.RightPanel.Layout.Row = 3;
                 app.RightPanel.Layout.Column = 1;
-            elseif (currentFigureWidth > app.onePanelWidth && currentFigureWidth <= app.twoPanelWidth)
+            elseif (currentFigureWidth > app.onePanelWidth && ...
+                    currentFigureWidth <= app.twoPanelWidth)
                 % Change to a 2x2 grid
                 app.GridLayout.RowHeight = {480, 480};
                 app.GridLayout.ColumnWidth = {'1x', '1x'};
@@ -471,7 +479,8 @@ classdef task3 < matlab.apps.AppBase
             app.UIFigure.AutoResizeChildren = 'off';
             app.UIFigure.Position = [50 50 1000 500];
             app.UIFigure.Name = 'MATLAB App';
-            app.UIFigure.SizeChangedFcn = createCallbackFcn(app, @updateAppLayout, true);
+            app.UIFigure.SizeChangedFcn = createCallbackFcn(app, ...
+                @updateAppLayout, true);
 
             % Create GridLayout
             app.GridLayout = uigridlayout(app.UIFigure);
@@ -490,7 +499,8 @@ classdef task3 < matlab.apps.AppBase
             % Create GridLayout2
             app.GridLayout2 = uigridlayout(app.LeftPanel);
             app.GridLayout2.ColumnWidth = {'fit', 'fit'};
-            app.GridLayout2.RowHeight = {'1x', 22.03, '1x', '1x', '1x', '1x', '1x', '1x', '1x', '1x', '1x', 'fit'};
+            app.GridLayout2.RowHeight = {'1x', 22.03, '1x', '1x', '1x', 
+                '1x', '1x', '1x', '1x', '1x', '1x', 'fit'};
 
             % Create TargetFrequencyEditFieldLabel
             app.TargetFrequencyEditFieldLabel = uilabel(app.GridLayout2);
@@ -500,7 +510,8 @@ classdef task3 < matlab.apps.AppBase
             app.TargetFrequencyEditFieldLabel.Text = 'Target Frequency';
 
             % Create TargetFrequencyEditField
-            app.TargetFrequencyEditField = uieditfield(app.GridLayout2, 'numeric');
+            app.TargetFrequencyEditField = uieditfield(app.GridLayout2, ...
+                'numeric');
             app.TargetFrequencyEditField.Layout.Row = 3;
             app.TargetFrequencyEditField.Layout.Column = 2;
             app.TargetFrequencyEditField.Value = 10;
@@ -510,24 +521,27 @@ classdef task3 < matlab.apps.AppBase
             app.StartButton.Layout.Row = 1;
             app.StartButton.Layout.Column = 1;
             app.StartButton.Text = 'Start';
-            app.StartButton.ButtonPushedFcn = createCallbackFcn(app, @StartButtonPushed, true);
+            app.StartButton.ButtonPushedFcn = createCallbackFcn(app, ...
+                @StartButtonPushed, true);
 
             % Create StopButton
             app.StopButton = uibutton(app.GridLayout2, 'push');
             app.StopButton.Layout.Row = 1;
             app.StopButton.Layout.Column = 2;
             app.StopButton.Text = 'Stop';
-            app.StopButton.ButtonPushedFcn = createCallbackFcn(app, @StopButtonPushed, true);
+            app.StopButton.ButtonPushedFcn = createCallbackFcn(app, ...
+                @StopButtonPushed, true);
 
             % Create CurrentFrequencyEditFieldLabel
             app.CurrentFrequencyEditFieldLabel = uilabel(app.GridLayout2);
-            app.CurrentFrequencyEditFieldLabel.HorizontalAlignment = 'right';
+            app.CurrentFrequencyEditFieldLabel.HorizontalAlignment ='right';
             app.CurrentFrequencyEditFieldLabel.Layout.Row = 4;
             app.CurrentFrequencyEditFieldLabel.Layout.Column = 1;
             app.CurrentFrequencyEditFieldLabel.Text = 'Current Frequency';
 
             % Create CurrentFrequencyEditField
-            app.CurrentFrequencyEditField = uieditfield(app.GridLayout2, 'numeric');
+            app.CurrentFrequencyEditField = uieditfield(app.GridLayout2, ...
+                'numeric');
             app.CurrentFrequencyEditField.Editable = 'off';
             app.CurrentFrequencyEditField.Layout.Row = 4;
             app.CurrentFrequencyEditField.Layout.Column = 2;
@@ -540,7 +554,8 @@ classdef task3 < matlab.apps.AppBase
             app.RollingAverageEditFieldLabel.Text = 'Rolling Avg Window ';
 
             % Create RollingAverageEditField
-            app.RollingAverageEditField = uieditfield(app.GridLayout2, 'numeric');
+            app.RollingAverageEditField = uieditfield(app.GridLayout2, ...
+                'numeric');
             app.RollingAverageEditField.Layout.Row = 5;
             app.RollingAverageEditField.Layout.Column = 2;
             app.RollingAverageEditField.Value = 10;
@@ -554,7 +569,8 @@ classdef task3 < matlab.apps.AppBase
 
 
             % Create RollingAvgValueEditField
-            app.RollingAvgValueEditField = uieditfield(app.GridLayout2, 'numeric');
+            app.RollingAvgValueEditField = uieditfield(app.GridLayout2, ...
+                'numeric');
             app.RollingAvgValueEditField.Editable = 'off';
             app.RollingAvgValueEditField.Layout.Row = 6;
             app.RollingAvgValueEditField.Layout.Column = 2;
@@ -568,7 +584,8 @@ classdef task3 < matlab.apps.AppBase
         
 
             % Create AlarmThresholdEditField
-            app.AlarmThresholdEditField = uieditfield(app.GridLayout2, 'numeric');
+            app.AlarmThresholdEditField = uieditfield(app.GridLayout2, ...
+                'numeric');
             app.AlarmThresholdEditField.Layout.Row = 7;
             app.AlarmThresholdEditField.Layout.Column = 2;
             app.AlarmThresholdEditField.Value = 0.5;
@@ -598,19 +615,22 @@ classdef task3 < matlab.apps.AppBase
             app.RecordMeasurementButton = uibutton(app.CenterPanel, 'push');
             app.RecordMeasurementButton.Position = [15 460 125 30];
             app.RecordMeasurementButton.Text = 'Record Measurement';
-            app.RecordMeasurementButton.ButtonPushedFcn = createCallbackFcn(app, @RecordMeasurementButtonPushed, true);
+            app.RecordMeasurementButton.ButtonPushedFcn = 
+            createCallbackFcn(app, @RecordMeasurementButtonPushed, true);
 
              % Create ClearMeasurementButton
             app.ClearMeasurementButton = uibutton(app.CenterPanel, 'push');
             app.ClearMeasurementButton.Position = [15 415 125 30];
             app.ClearMeasurementButton.Text = 'Clear Measurements';
-            app.ClearMeasurementButton.ButtonPushedFcn = createCallbackFcn(app, @ClearMeasurementButtonPushed, true);
+            app.ClearMeasurementButton.ButtonPushedFcn = 
+            createCallbackFcn(app, @ClearMeasurementButtonPushed, true);
 
               % Create SaveMeasurementButton
             app.SaveMeasurementButton = uibutton(app.CenterPanel, 'push');
             app.SaveMeasurementButton.Position = [15 370 125 30];
             app.SaveMeasurementButton.Text = 'Save Measurements';
-            app.SaveMeasurementButton.ButtonPushedFcn = createCallbackFcn(app, @SaveMeasurementButtonPushed, true);
+            app.SaveMeasurementButton.ButtonPushedFcn = 
+            createCallbackFcn(app, @SaveMeasurementButtonPushed, true);
 
 
             % Create RightPanel
@@ -627,7 +647,8 @@ classdef task3 < matlab.apps.AppBase
             % Create buttonToRecord
             app.buttonToRecord = uiswitch(app.RightPanel, 'slider');
             app.buttonToRecord.Position = [130 415 45 20];
-            app.buttonToRecord.ValueChangedFcn = createCallbackFcn(app, @buttonToRecordValueChanged, true);
+            app.buttonToRecord.ValueChangedFcn = 
+            createCallbackFcn(app, @buttonToRecordValueChanged, true);
 
             % Create AlarmSwitchLabel
             app.AlarmSwitchLabel = uilabel(app.RightPanel);
@@ -638,7 +659,8 @@ classdef task3 < matlab.apps.AppBase
             % Create AlarmSwitch
             app.AlarmSwitch = uiswitch(app.RightPanel, 'slider');
             app.AlarmSwitch.Position = [30 415 45 20];
-            app.AlarmSwitch.ValueChangedFcn = createCallbackFcn(app, @AlarmSwitchValueChanged, true);
+            app.AlarmSwitch.ValueChangedFcn = 
+            createCallbackFcn(app, @AlarmSwitchValueChanged, true);
 
             % Create requiredarkSwitchLabel
             app.requiredarkSwitchLabel = uilabel(app.RightPanel);
@@ -650,7 +672,8 @@ classdef task3 < matlab.apps.AppBase
             % Create requiredarkSwitch
             app.requiredarkSwitch = uiswitch(app.RightPanel, 'slider');
             app.requiredarkSwitch.Position = [29 319 45 20];
-            app.requiredarkSwitch.ValueChangedFcn = createCallbackFcn(app, @requireDarkValueChanged, true);
+            app.requiredarkSwitch.ValueChangedFcn = 
+            createCallbackFcn(app, @requireDarkValueChanged, true);
 
             % Show the figure after all components are created
             app.UIFigure.Visible = 'on';
