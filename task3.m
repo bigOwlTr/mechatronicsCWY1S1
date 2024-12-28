@@ -33,7 +33,7 @@ classdef task3 < matlab.apps.AppBase
         RollingAvgValueEditField        matlab.ui.control.NumericEditField
     end
 
-    % Properties that correspond to apps with auto-reflow
+    % Properties that correspond to app
     properties (Access = private)
         onePanelWidth = 576;        %setting side panel widths for the gui
         twoPanelWidth = 768;        %setting main panel width for the gui
@@ -51,14 +51,12 @@ classdef task3 < matlab.apps.AppBase
         requireDarkState = 'Off';   %require dark switch status flag
     end
    
-
     % Callbacks that handle component events
     methods (Access = private)
 
-        function startMeasurements(app) %function to begin measurements
-
+        %function to begin measurements
+        function startMeasurements(app) 
             try
-
                 if app.IsMeasuring      %check if measurments are on
                     disp('Measurements already running.');
                     return;             %if they are disp msg and return
@@ -109,23 +107,21 @@ classdef task3 < matlab.apps.AppBase
                 uialert(app.UIFigure, ['Error: ', exception.message], ...
                     'Measurement Error');   %exception msg
             end
-
         end
 
+        %function to stop measurements 
+        function stopMeasurements(app)    
+            app.IsMeasuring = false;    %sets the measuring flag to false
 
-        function stopMeasurements(app)      %function to stop measuring
-
-            app.IsMeasuring = false;    %sets the ismeasuring flag to false
-
-            if ~isempty(app.ArduinoWorker) %cancel the parallel task if running
-                cancel(app.ArduinoWorker);
+            if ~isempty(app.ArduinoWorker) %if worker is running
+                cancel(app.ArduinoWorker); %stop the worker
                 app.ArduinoWorker = [];
-                disp('Measurement task stopped.');
+                disp('Measurement task stopped.'); %disp msg that it stopped
             end
-
         end
     
-        function updatePlotCallback(app, data)    %plotting and gui updates
+        %plotting and gui updates
+        function updatePlotCallback(app, data)    
             %update the frequency from the measurement period
             app.CurrentFrequencyEditField.Value = 1 / data(1);
             app.updateBuffer(data(2));  %send distance to the buffer function
@@ -160,7 +156,6 @@ classdef task3 < matlab.apps.AppBase
                     else    %else just return without updating
                         return;
                     end
-
                 end
 
                 %update the ylim based on current data
@@ -174,10 +169,10 @@ classdef task3 < matlab.apps.AppBase
                 %turn on axis grids for readability
                 app.UIAxes.YGrid = 'on';
             end
-
         end
         
-        function updateBuffer(app, newReading)  %updates the rolling buffer
+        %updates the rolling buffer
+        function updateBuffer(app, newReading)  
             %add the new/current reading to the buffer
             app.MeasurementBuffer = [app.MeasurementBuffer, newReading];  
             %define the buffer size as specified in the gui
@@ -193,7 +188,6 @@ classdef task3 < matlab.apps.AppBase
             app.RollingAverage = mean(app.MeasurementBuffer);
             %draw the new rolling average to the gui
             app.RollingAvgValueEditField.Value = app.RollingAverage;
-         
         end
 
         %the parallel arduino loop
@@ -242,69 +236,148 @@ classdef task3 < matlab.apps.AppBase
 
                     %check if distance is within bounds
                     if currentDistance >= 0.1 && currentDistance <= 2
+                        %if so send all to data queue
                         send(dataQueue, [elapsedMeasurementTime, ...
                             currentDistance, false]);  
-                    %if beyond bounds set as NaN
                     elseif currentDistance >= 2
+                        %if beyond bounds set as NaN
                         send(dataQueue, [elapsedMeasurementTime, NaN, false]); 
-                    %if within set as 0 to ensure alarm logic functions
                     else 
+                        %if within set as 0 to ensure alarm logic functions
                         send(dataQueue, [elapsedMeasurementTime, 0, false]); 
                     end
-
                 end
 
                 %if the button is being used then use logic to check for
                 %the button being pressed
                 if buttonToRecordState == "On"
+                    %write the current time since it was last checked
                     buttonCheckElapsed = toc(buttonCheckTimer);
-                    if buttonCheckElapsed >= buttonCheckPeriod && toc(buttonCooldown) >= 0.75
+                    
+                    %if time since last check is long enough and it is long
+                    %enough since the button was last pressed
+                    if buttonCheckElapsed >= buttonCheckPeriod && ...
+                        toc(buttonCooldown) >= 0.75
+                        %restart the button check timer
                         buttonCheckTimer = tic;
+
+                        %check voltage against custom threshold to prevent
+                        %false positives
                         if readVoltage(arduinoObj, 'A4') >= 4.88
-                            send(dataQueue, [elapsedMeasurementTime, currentDistance, true]);
+                            
+                            %if button pressed resend to data queue with
+                            %true for the button state
+                            send(dataQueue, [elapsedMeasurementTime, ...
+                                currentDistance, true]);
+                            %restart timer for button cooldown
                             buttonCooldown = tic;
                         end
                     end
                 end
 
+                %if alarm state is on and distance is within alarm thresold
                 if IsAlarm == "On"  && currentDistance <= alarmThreshold
+                    %if required dark is off or it is infact dark
                     if requireDarkState == "Off" || photoDiodeVoltage <= 0.36
-
+                        %current ratio of distance to threshold
                         alarmRatio = alarmThreshold / currentDistance;
+                        %ratio of that to the max possible ratio
                         distanceFactor = alarmRatio / alarmMaxRatio;
-
+                        %read the potentiometer voltage
                         potentiometerVoltage = readVoltage(arduinoObj, 'A3');
-
+                        %set alarm frequency based off distance factor and
+                        %potentiometer
                         alarmFreq =  100 * potentiometerVoltage * distanceFactor;
-
+                        %led on time based on alarm period
                         ledOnTime = 1 / alarmFreq;
-
+                        %start timer for alarm logic
                         alarmElapsedTime = toc(alarmTimerStart);
 
-                        if ~ledOnState 
+                        if ~ledOnState  %if led is off
+                            %if passed when led should be turned on
                             if alarmElapsedTime > ledOnTime
+                                %turn led on and set flag as true
                                 writeDigitalPin(arduinoObj, 'D13', 1);
                                 ledOnState = true;
                             end
-                        else
+                        else            %if led is on
+                            %turn led off
                             writeDigitalPin(arduinoObj, 'D13', 0);
+                            %set flag as off
                             ledOnState = false;
-                            alarmTimerStart = tic;
+                            %read photodiode voltage as led is off
                             photoDiodeVoltage = readVoltage(arduinoObj, 'A2');
+                            %start the alarm timer again
                             alarmTimerStart = tic;
                         end
-                    else
+                    else    %if alarm is only off due to it not being dark
+                        %measure photodiode voltage
                         photoDiodeVoltage = readVoltage(arduinoObj, 'A2');
                     end
+                end 
 
-                end
-                
-
+                %after checking all pause to prevent busy waiting
                 pause(0.001);
             end
-
         end
 
+        %function to record measurement to a table
+        function recordMeasurment(app, ~)
+                if ~isnan(currentMeasurement)   %if data is not NaN
+                    currentTime = datetime('now'); %get current datestamp
+                    currentTimeStr = datestr(currentTime, ...
+                        'yyyy-mm-dd HH:MM:SS');  %convert to a string
+                    %create new row to be added
+                    newRow = {currentTimeStr, app.RollingAverage}; 
+                    %append to existing table
+                    app.RecordingsTable.Data = [app.RecordingsTable.Data; newRow];  
+                else    %if data is NaN
+                    uialert(app.UIFigure, 'Measurement is invalid (NaN).',...
+                         'Recording Error');
+                end
+        end
+
+        %function to save recorded measurements to csv
+        function saveMeasurement(app, ~)
+            %fetch table data
+            tableData = app.RecordingsTable.Data;
+            if ~isempty(tableData)  %if table is not empty
+                %open window with prompts for filename and path
+                [fileName, filePath] = uiputfile('*.csv', ...
+                    'Save Table as CSV');
+                %create fullfilepath from path and name
+                fullFilePath = [filePath, fileName];
+                if isequal(fileName, 0) %check if there is no file name
+                    return; %if not then return
+                else    %if there is a file name
+                    try
+                        tableData(:, 1) = cellfun(@string, tableData(:, 1), ...
+                            'UniformOutput', false);  %timestamps are string
+                        tableData(:, 2) = cellfun(@double, tableData(:, 2), ...
+                            'UniformOutput', false);  %distances are numeric
+                        
+                        %create table
+                        T = cell2table(tableData, 'VariableNames', ...
+                            {'Timestamp', 'Distance(m)'});
+                        
+                        % write table
+                        writetable(T, fullFilePath);
+                        
+                        %show success message
+                        uialert(app.UIFigure, ...
+                            'Table data saved successfully!', 'Save Complete');
+                    catch ME    %catch errors
+                        %error message
+                        uialert(app.UIFigure, ['Failed to save file: ', ...
+                            ME.message], 'Save Error');
+                    end
+                end
+            else    %if table is empty
+                %msg explaining table empty
+                uialert(app.UIFigure, ['No data to save. ' ...
+                    'The table is empty.'], 'Save Error');
+            end
+        end
 
         % Changes arrangement of the app based on UIFigure width
         function updateAppLayout(app, ~)
@@ -341,6 +414,7 @@ classdef task3 < matlab.apps.AppBase
                 app.RightPanel.Layout.Column = 3;
             end
         end
+
     end
 
     % Component initialization
@@ -348,79 +422,48 @@ classdef task3 < matlab.apps.AppBase
 
         % Callback for StartButton
         function StartButtonPushed(app, ~)
-            app.startMeasurements();  % Starts the measurement process
+            app.startMeasurements();  %calls startMeasurements function
         end
 
         % Callback for StopButton
         function StopButtonPushed(app, ~)
-            app.stopMeasurements();  % Stops the measurement process
+            app.stopMeasurements();  %calls stopMeasurements function
         end
 
         % Callback for RecordMeasurementButton
         function RecordMeasurementButtonPushed(app, ~)
-            currentMeasurement = app.RollingAverage;
-            if ~isnan(currentMeasurement)
-                currentTime = datetime('now');%get current datestamp
-                currentTimeStr = datestr(currentTime, 'yyyy-mm-dd HH:MM:SS');  %convert to a string
-            
-                newRow = {currentTimeStr, currentMeasurement};  %new row to add
-
-                app.RecordingsTable.Data = [app.RecordingsTable.Data; newRow];  %append to existing table
-            else
-                uialert(app.UIFigure, 'Measurement is invalid (NaN).', 'Recording Error');
-            end
+            app.recordMeasurment(); %calls recordMeasurement function
         end
 
         % Callback for ClearMeasurementButton
         function ClearMeasurementButtonPushed(app, ~)
-            app.RecordingsTable.Data = {};       
+            app.RecordingsTable.Data = {}; %set data array to empty   
         end
 
         %callback for SaveMeasurementButton
         function SaveMeasurementButtonPushed(app, ~)
-            tableData = app.RecordingsTable.Data;
-            if ~isempty(tableData)
-   
-                [fileName, filePath] = uiputfile('*.csv', 'Save Table as CSV');
-                fullFilePath = [filePath, fileName];
-                if isequal(fileName, 0)
-                    return;
-                else
-                    try
-                        tableData(:, 1) = cellfun(@string, tableData(:, 1), 'UniformOutput', false);  %timestamps are string
-                        tableData(:, 2) = cellfun(@double, tableData(:, 2), 'UniformOutput', false);  %distances are numeric
-                        
-                       %create table
-                        T = cell2table(tableData, 'VariableNames', {'Timestamp', 'Distance(m)'});
-                        
-                        % write table
-                        writetable(T, fullFilePath);
-                        
-                        %show success message
-                        uialert(app.UIFigure, 'Table data saved successfully!', 'Save Complete');
-                    catch ME
-                        %error message
-                        uialert(app.UIFigure, ['Failed to save file: ', ME.message], 'Save Error');
-                    end
-                end
-            else
-                %handles if table is empty
-                uialert(app.UIFigure, 'No data to save. The table is empty.', 'Save Error');
-            end
+            app.saveMeasurement();  %calls saveMeasurement function
         end
     
+        %callback for AlarmSwitch
         function AlarmSwitchValueChanged(app, ~) 
+            %set to switch value
             app.IsAlarm = app.AlarmSwitch.Value; 
         end
 
+        %callback for buttonToRecord
         function buttonToRecordValueChanged(app, ~)
+            %set to switch value
             app.buttonToRecordState = app.buttonToRecord.Value; 
         end
 
+        %callback for requireDark
         function requireDarkValueChanged(app, ~)
+            %set to switch value
             app.requireDarkState = app.requiredarkSwitch.Value; 
         end
 
+        %creates the UI componants
         function createComponents(app)
 
             % Create UIFigure and hide until all components are created
@@ -627,7 +670,6 @@ classdef task3 < matlab.apps.AppBase
             % Register the app with App Designer
             registerApp(app, app.UIFigure)
              
-
             if nargout == 0
                 clear app
             end
@@ -635,10 +677,11 @@ classdef task3 < matlab.apps.AppBase
 
         % Code that executes before app deletion
         function delete(app)
-            app.stopMeasurements();
-            % Delete UIFigure when app is deleted
-
             
+            %call stopMeasurement function to kill worker before close
+            app.stopMeasurements();
+
+            % Delete UIFigure when app is deleted
             delete(app.UIFigure)
         end
     end
