@@ -1,55 +1,65 @@
 clear;close all;clc;        %Clearing the workspace and any windows
 
-startValue = -10;
-endValue = 10;
+startValue = -10;           %start distance from centre
+endValue = 10;              %end distance from centre
 
+dataStruct = struct();      %initialse a struct to store data
 
-dataStruct = struct();
-
-
-
-figure('Position', [100, 100, 1800, 1200]);
+%initialise plot with set size and location
+figure('Position', [100, 100, 1500, 1200]);
 hold on;
 
-yyaxis left
+yyaxis left %plotting graph for left yaxis
+ylim ([0, 1.5]);  %set left ylim
+%left yaxis label
+ylabel('Average Distance Recorded (m)', 'Color', 'b', 'FontSize', 14); 
+xlim ([-11,11])          %set the xlim for the graph
+grid on;
+set(gca, 'FontSize', 12, 'GridLineWidth', 1);   %tick size and grid lines
 
-x = 1:240;
-for i =startValue:endValue
-    if i < 0
+x = 1:240;  %x values for all measurements
+for i =startValue:endValue  %for each distance from centre
+    if i < 0    %for the negative distances
+        %create file/variable name with _ in place of -
         variableName = "cm_"+-1*i+"beamangle";
     else
+        %create file/variable name
         variableName = "cm"+i+"beamangle";
     end
-    dataStruct.(variableName) = load("C:\Users\colin\Documents\MATLAB\mechatronicsCourseworkY1\beamAngleData/" + variableName);
+    
+    %write the file to same variable in the struct
+    dataStruct.(variableName) = load("C:\Users\colin\Documents\MATLAB" + ...
+        "\mechatronicsCourseworkY1\beamAngleData/" + variableName);
 
-    dataStruct.(variableName).Average = mean(dataStruct.(variableName).distanceTable.Distance);
+    %write a mean for each variable averaging the distance
+    dataStruct.(variableName).Average = ... 
+    mean(dataStruct.(variableName).distanceTable.Distance);
+    %fit linear model to the distance data
     lm = fitlm(x,dataStruct.(variableName).distanceTable.Distance);
+    %write the se of the linear model to the struct
     dataStruct.(variableName).SE = lm.Coefficients.SE(2);
-    plot(i, dataStruct.(variableName).Average, '^','MarkerEdgeColor', 'b','MarkerFaceColor','b');
+    %plot the distance averages with a blue triangle marker
+    plot(i, dataStruct.(variableName).Average, '^','MarkerEdgeColor', ...
+        'b','MarkerFaceColor','b','MarkerSize',7.5);
 end
 
-
+%set yaxis for plotting the right
 yyaxis right
-for i = startValue:endValue
-     if i < 0
-        variableName = "cm_" + num2str(-1 * i) + "beamangle";  % For negative i
+ylim ([-0.0005, 0.0005]);  %set right ylim
+xlabel('Edge Position from Centre Line');       %xaxis label
+%right yaxis label
+ylabel('Standard Error (m)', 'Color', 'r', 'FontSize', 14);
+
+for i =startValue:endValue  %for each distance from centre
+    if i < 0    %for the negative distances
+        %create file/variable name with _ in place of -
+        variableName = "cm_"+-1*i+"beamangle";
     else
-        variableName = "cm" + num2str(i) + "beamangle";  % For positive i
+        %create file/variable name
+        variableName = "cm"+i+"beamangle";
     end
-    plot(i, dataStruct.(variableName).SE, 'o','MarkerEdgeColor', 'r','MarkerFaceColor','r');
+
+    %plot the se with the right y axis as red circle markers
+    plot(i, dataStruct.(variableName).SE, 'o','MarkerEdgeColor', ...
+        'r','MarkerFaceColor','r','MarkerSize', 7.5);
 end
-
-xlim ([-11,11])
-
-yyaxis left
-ylim ([0, 1.5]);  % Start the left y-axis (Average Distance) at 0
-
-yyaxis right
-ylim ([-0.001, 0.001]);   % Zoom in on the right y-axis (SE)
-
-xlabel('Edge Position');
-yyaxis left
-ylabel('Average Distance measured (m)', 'Color', 'b');  % Left y-axis label
-yyaxis right
-ylabel('Standard Error (SE)', 'Color', 'r');    % Right y-axis label
-grid on;
