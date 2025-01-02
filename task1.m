@@ -1,8 +1,5 @@
 clear;close all;clc;       %clearing the workspace and any windows
 
-distanceMin = 0.1;         %measurement range after callibration
-distanceMax = 2;
-
 callibrationGradient = 0.99016;    %callibration gradient
 callibrationFactor = 1/0.99016;    %callibration factor
 callibrationOffset = 3.9611/1000;  %callibration offset converted back to m 
@@ -55,12 +52,8 @@ for i = 1:totalMeasurements
     -callibrationOffset;  %current distance measurement
     timeAfter = toc;    %time after distance is measured
 
-    %writes the current distance if within the measurement range
-    if currentDistance >= distanceMin && currentDistance <= distanceMax     
-        distanceTable.Distance(i) = currentDistance;
-    else   %writes not a number if outside range
-        distanceTable.Distance(i) = NaN;  
-    end
+    %writes the current distance 
+    distanceTable.Distance(i) = currentDistance;
     
     %writes the time immediately after the measurement is made to the table
     distanceTable.Time(i) = timeAfter;                                
