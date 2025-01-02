@@ -188,7 +188,14 @@ classdef task3 < matlab.apps.AppBase
             
             %calculate and update rolling average
             app.RollingAverage = mean(app.MeasurementBuffer);
-            %draw the new rolling average to the gui
+
+            %if within calibration range text is black
+            if app.RollingAverage <= 2 && app.RollingAverage>=0.02
+                app.RollingAvgValueEditField.FontColor = [0, 0, 0];
+            else % if outside callibration range make text red
+                app.RollingAvgValueEditField.FontColor = [1, 0, 0];
+            end
+
             app.RollingAvgValueEditField.Value = app.RollingAverage;
         end
 
@@ -236,19 +243,9 @@ classdef task3 < matlab.apps.AppBase
                         currentDistance = NaN; 
                     end
 
-                    %check if distance is within bounds
-                    if currentDistance >= 0.1 && currentDistance <= 2
-                        %if so send all to data queue
-                        send(dataQueue, [elapsedMeasurementTime, ...
-                            currentDistance, false]);  
-                    elseif currentDistance >= 2
-                        %if beyond bounds set as NaN
-                        send(dataQueue, [elapsedMeasurementTime, ...
-                            NaN, false]); 
-                    else 
-                        %if within set as 0 to ensure alarm logic functions
-                        send(dataQueue, [elapsedMeasurementTime, 0, false]); 
-                    end
+                    %send to the dataqueue
+                   send(dataQueue, [elapsedMeasurementTime, ...
+                            currentDistance, false]);
                 end
 
                 %if the button is being used then use logic to check for
