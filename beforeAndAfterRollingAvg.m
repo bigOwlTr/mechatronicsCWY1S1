@@ -8,6 +8,7 @@ data = load("1mNoCalib.mat");
 figure(1);
 set(gcf, 'Position', [100, 100, 700, 700]);  %set figure size 
 set(gca, 'FontSize', 24);
+set(gca, 'GridLineStyle', '-', 'GridAlpha', 0.1, 'LineWidth', 2);
 hold on;
 plot(data.distanceTable.Time, data.distanceTable.Distance, 'k', 'LineWidth', 2);
 xlabel('Time (s)');
@@ -19,6 +20,7 @@ hold off;
 figure(2);
 set(gcf, 'Position', [100, 100, 700, 700]);  %set figure size 
 set(gca, 'FontSize', 24);
+set(gca, 'GridLineStyle', '-', 'GridAlpha', 0.1, 'LineWidth', 2);
 hold on;
 plot(data.distanceTable.Time, data.distanceTable.RollingAvg, 'k', 'LineWidth', 2);
 
