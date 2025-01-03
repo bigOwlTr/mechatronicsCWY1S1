@@ -22,8 +22,8 @@ plot(window50.distanceTable.Time, window50.distanceTable.RollingAvg, 'r', 'LineW
 hold off;
 
 %label axes
-xlabel('Time [s]');
-ylabel('Distance [m]');
+xlabel('Time (s)');
+ylabel('Distance (m)');
 
 %add legend
 legend('show');
