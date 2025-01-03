@@ -8,7 +8,7 @@ debug = 0;                         %set to 1 for debug console values
 
 frequency = 24;             %target frequency
 period = 1/frequency;       %convert frequency to period
-duration = 10;              %measurement duration in seconds
+duration = 60;              %measurement duration in seconds
 windowSize = 25;            %rolling avg window size
 
 %total number of measurements so table size can be pre-allocated

@@ -3,7 +3,7 @@ clear; close all; clc;
 
 %load data
 data = load("1mNoCalib.mat");
-
+dataLive = load("liveData.mat");
 
 figure(1);
 set(gcf, 'Position', [100, 100, 700, 700]);  %set figure size 
@@ -23,9 +23,22 @@ set(gca, 'FontSize', 24);
 set(gca, 'GridLineStyle', '-', 'GridAlpha', 0.1, 'LineWidth', 2);
 hold on;
 plot(data.distanceTable.Time, data.distanceTable.RollingAvg, 'k', 'LineWidth', 2);
-
-ylim([0.975 1.025])
 xlabel('Time (s)');
 ylabel('Distance (m)');
+ylim([0.975 1.025])
+
+hold off;
+
+figure(3);
+set(gcf, 'Position', [100, 100, 700, 700]);  %set figure size 
+set(gca, 'FontSize', 24);
+set(gca, 'GridLineStyle', '-', 'GridAlpha', 0.1, 'LineWidth', 2);
+hold on;
+plot(dataLive.distanceTable.Time, dataLive.distanceTable.RollingAvg, 'r', 'LineWidth', 2);
+plot(dataLive.distanceTable.Time, dataLive.distanceTable.Distance, 'b', l)
+xlabel('Time (s)');
+ylabel('Distance (m)');
+
+
 hold off;
 

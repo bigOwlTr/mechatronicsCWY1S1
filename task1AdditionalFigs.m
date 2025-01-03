@@ -31,7 +31,7 @@ ylim([0.975 1.025])
 
 hold off;
 
-figure(3);  %live data plot
+%live data plot
 %set figure size
 figure('Units', 'inches', 'Position', [0, 0, 6, 4]);
 %set font size
@@ -45,6 +45,7 @@ plot(dataLive.distanceTable.Time, dataLive.distanceTable.RollingAvg, 'r' ...
 xlabel('Time (s)');
 ylabel('Distance (m)');
 legend('show')
+grid on
 
 
 hold off;
