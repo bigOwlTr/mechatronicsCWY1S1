@@ -6,7 +6,7 @@ endValue = 10;              %end distance from centre
 dataStruct = struct();      %initialse a struct to store data
 
 %initialise plot with set size and location
-figure('Position', [100, 100, 1500, 1200]);
+figure('Units', 'inches', 'Position', [0, 0, 6, 4]);
 hold on;
 
 yyaxis left %plotting graph for left yaxis
@@ -15,8 +15,8 @@ ylim ([0, 1.5]);  %set left ylim
 ylabel('Average Distance Recorded (m)', 'Color', 'b'); 
 xlim ([-11,11])          %set the xlim for the graph
 grid on;
-set(gca, 'GridLineStyle', '-', 'GridAlpha', 0.1, 'LineWidth', 1.5);
-set(gca, 'FontSize', 16);   %tick size 
+set(gca, 'GridLineStyle', '-', 'GridAlpha', 0.1, 'LineWidth', 1);
+set(gca, 'FontSize', 12);   %tick size 
 
 x = 1:240;  %x values for all measurements
 for i =startValue:endValue  %for each distance from centre
@@ -41,7 +41,7 @@ for i =startValue:endValue  %for each distance from centre
     dataStruct.(variableName).SE = lm.Coefficients.SE(2);
     %plot the distance averages with a blue triangle marker
     plot(i, dataStruct.(variableName).Average, '^','MarkerEdgeColor', ...
-        'b','MarkerFaceColor','b','MarkerSize',7.5);
+        'b','MarkerFaceColor','b','MarkerSize',5);
 end
 
 %set yaxis for plotting the right
@@ -62,5 +62,39 @@ for i =startValue:endValue  %for each distance from centre
 
     %plot the se with the right y axis as red circle markers
     plot(i, dataStruct.(variableName).SE, 'o','MarkerEdgeColor', ...
-        'r','MarkerFaceColor','r','MarkerSize', 7.5);
+        'r','MarkerFaceColor','r','MarkerSize', 5);
 end
+
+hold off
+
+%initialise plot with set size and position
+figure('Units', 'inches', 'Position', [0, 0, 6, 4]);
+hold on;
+ylabel('Distance (m)');     %ylabel
+set(gca, 'GridLineStyle', '-', 'GridAlpha', 0.1, 'LineWidth', 1);
+set(gca, 'FontSize', 12);   %font size
+grid on
+xlabel('Edge Position from Centre Line (cm)');       %xaxis label
+
+for i =startValue:endValue  %for each distance from centre
+    perpendicularDist = abs(i);
+    %calculate expected distance
+    expectedDistance = sqrt(0.5^2+(perpendicularDist/100)^2);
+
+    if i < 0    %for the negative distances
+        %create file/variable name with _ in place of -
+        variableName = "cm_"+-1*i+"beamangle";
+    else
+        %create file/variable name
+        variableName = "cm"+i+"beamangle";
+    end
+
+    %plot the distances with a blue triangle marker
+    P1=plot(i, dataStruct.(variableName).Average, '^','MarkerEdgeColor', ...
+        'b','MarkerFaceColor','b','MarkerSize',5);
+    P2=plot(i, expectedDistance, 'o', 'MarkerEdgeColor', 'r', ...
+        'MarkerFaceColor', 'r', 'MarkerSize', 5);
+end
+
+legend([P1,P2], {'Measured Distance', 'Expected Disrance'}, ...
+    'Location', 'north', 'FontSize', 12);
