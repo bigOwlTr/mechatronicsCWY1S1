@@ -43,8 +43,8 @@ classdef task3 < matlab.apps.AppBase
         MeasurementBuffer = [];     %creates the rolling buffer array
         BufferSize = 0;             %initialises the buffer size as 0
         RollingAverage  = 0;        %initialises the rolling avg as 0
-        callibrationFactor = 1/0.99016;       %callibration factor
-        callibrationOffset = 3.9611/1000;     %callibration offset in m
+        calibrationFactor = 1/0.99786;       %calibration factor
+        calibrationOffset = -1.3515/1000;    %calibration offset in m
         CurrentFrequency = 0;       %initialises current frequency as 0
         IsAlarm = 'Off';            %alarm switch status flag
         buttonToRecordState = 'Off';%button to record switch status flag
@@ -186,13 +186,14 @@ classdef task3 < matlab.apps.AppBase
                     app.BufferSize + 1:end);  %trim the buffer to size
             end
             
-            %calculate and update rolling average
-            app.RollingAverage = mean(app.MeasurementBuffer);
+            %calculate and update rolling average with calibration
+            app.RollingAverage = mean(app.MeasurementBuffer)*...
+            app.calibrationFactor - app.calibrationOffset;
 
             %if within calibration range text is black
             if app.RollingAverage <= 2 && app.RollingAverage>=0.02
                 app.RollingAvgValueEditField.FontColor = [0, 0, 0];
-            else % if outside callibration range make text red
+            else % if outside calibration range make text red
                 app.RollingAvgValueEditField.FontColor = [1, 0, 0];
             end
 
