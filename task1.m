@@ -1,8 +1,8 @@
 clear;close all;clc;       %clearing the workspace and any windows
 
-callibrationGradient = 0.99016;    %callibration gradient
-callibrationFactor = 1/0.99016;    %callibration factor
-callibrationOffset = 3.9611/1000;  %callibration offset converted back to m 
+calibrationGradient = 0.99786;    %callibration gradient
+calibrationFactor = 1/calibrationGradient;    %callibration factor
+calibrationOffset = -1.3515/1000;  %callibration offset converted back to m 
 
 debug = 0;                         %set to 1 for debug console values
 
@@ -48,8 +48,8 @@ for i = 1:totalMeasurements
     pause(pauseTime);                  
 
     timeBefore = toc;   %time just before distance is measured
-    currentDistance = callibrationFactor*readDistance(ultrasonicObj)...
-    -callibrationOffset;  %current distance measurement
+    currentDistance = calibrationFactor*readDistance(ultrasonicObj)...
+    -calibrationOffset;  %current distance measurement
     timeAfter = toc;    %time after distance is measured
 
     %writes the current distance 
