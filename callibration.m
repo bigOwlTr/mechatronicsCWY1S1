@@ -17,9 +17,9 @@ end
 
 x = 100:100:2000;                   %make x values for each true distance
 figure(1);
-set(gcf, 'Position', [100, 100, 650, 650]);  %set figure size to 650x650
+set(gcf, 'Position', [100, 100, 700, 700]);  %set figure size to 650x650
 set(gca, 'GridLineStyle', '-', 'GridAlpha', 0.1, 'LineWidth', 2);
-set(gca, 'FontSize', 16);
+set(gca, 'FontSize', 24);
 hold on;
 L1=plot(x, x, 'r', 'LineWidth', 2);  %red line showing the true distance
 %plot the measured data points   
@@ -39,7 +39,7 @@ L2=plot(x, yFit, 'g-', 'LineWidth', 2);    %plot linear model
 L3=plot(x, averages, '^', 'MarkerFaceColor', 'b', 'MarkerEdgeColor', ...
     'b','MarkerSize',7.5);   
 legend([L1,L2,L3], {'Ideal Line', 'Linear Model','Recorded Distance'}, ...
-    'Location', 'northwest', 'FontSize', 16);
+    'Location', 'northwest', 'FontSize', 24);
 
 %displaying the coefficients of the linear model
 disp("Linear model gradient: " + linearModel.Coefficients.Estimate(2) + ...
@@ -49,10 +49,11 @@ disp("Linear model gradient: " + linearModel.Coefficients.Estimate(2) + ...
 hold off;
 
 figure(2)   %plotting figure showing all distances and their consistancy
-set(gcf, 'Position', [100, 100, 650, 650]);  %set figure size to 650x650
+set(gcf, 'Position', [100, 100, 700, 700]);  %set figure size to 650x650
 set(gca, 'GridLineStyle', '-', 'GridAlpha', 0.1, 'LineWidth', 1.5);
-set(gca, 'FontSize', 16);
+set(gca, 'FontSize', 24);
 xlim([0 240])   %set xlim
+ylim([0 2.1])
 xticks(0:30:240)    %set xticks
 hold on;
 
