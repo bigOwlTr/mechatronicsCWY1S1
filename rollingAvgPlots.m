@@ -12,6 +12,7 @@ figure('Units', 'inches', 'Position', [0, 0, 6, 4]);
 
 %set font size
 set(gca, 'FontSize', 12);
+set(gca, 'GridLineStyle', '-', 'GridAlpha', 0.1, 'LineWidth', 1);
 
 %plot rolling averages
 hold on;
